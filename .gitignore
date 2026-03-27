@@ -1,1 +1,3 @@
-"cartera.db" 
+cartera.db
+__pycache__/
+*.pyc
