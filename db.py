@@ -1,6 +1,7 @@
 """
 db.py — Supabase (HTTPS) para Cartera Legal Analytics
 """
+import math
 import pandas as pd
 import streamlit as st
 from supabase import create_client, Client
@@ -19,12 +20,21 @@ def get_conn():
     return None
 
 
+def _clean(v):
+    """Convierte NaN/inf a None para serialización JSON."""
+    if v is None:
+        return None
+    try:
+        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+            return None
+    except Exception:
+        pass
+    return v
+
+
 def _to_records(df: pd.DataFrame) -> list:
     """Convierte DataFrame a lista de dicts reemplazando NaN/inf con None."""
-    return (df
-            .replace([float("inf"), float("-inf")], None)
-            .where(pd.notna(df), None)
-            .to_dict(orient="records"))
+    return [{k: _clean(v) for k, v in row.items()} for row in df.to_dict(orient="records")]
 
 
 def init_db():
