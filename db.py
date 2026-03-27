@@ -19,6 +19,14 @@ def get_conn():
     return None
 
 
+def _to_records(df: pd.DataFrame) -> list:
+    """Convierte DataFrame a lista de dicts reemplazando NaN/inf con None."""
+    return (df
+            .replace([float("inf"), float("-inf")], None)
+            .where(pd.notna(df), None)
+            .to_dict(orient="records"))
+
+
 def init_db():
     """Las tablas se crean desde el SQL Editor de Supabase (setup inicial)."""
     pass
@@ -27,7 +35,7 @@ def init_db():
 def replace_raw(df: pd.DataFrame):
     client = get_client()
     client.table("raw_suscripciones").delete().not_.is_("sold_to_pt", "null").execute()
-    records = df.where(pd.notna(df), None).to_dict(orient="records")
+    records = _to_records(df)
     for i in range(0, len(records), 500):
         client.table("raw_suscripciones").insert(records[i:i + 500]).execute()
 
@@ -35,7 +43,7 @@ def replace_raw(df: pd.DataFrame):
 def save_clasificaciones(df: pd.DataFrame):
     client = get_client()
     client.table("clasificaciones").delete().not_.is_("material", "null").execute()
-    records = df.where(pd.notna(df), None).to_dict(orient="records")
+    records = _to_records(df)
     for i in range(0, len(records), 500):
         client.table("clasificaciones").insert(records[i:i + 500]).execute()
 
@@ -75,7 +83,7 @@ def save_resumen_periodo(df: pd.DataFrame, periodo: str):
     client = get_client()
     client.table("resumen_mensual").delete().eq("periodo", periodo).execute()
     df["periodo"] = periodo
-    records = df.where(pd.notna(df), None).to_dict(orient="records")
+    records = _to_records(df)
     for i in range(0, len(records), 500):
         client.table("resumen_mensual").insert(records[i:i + 500]).execute()
 
