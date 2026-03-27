@@ -98,20 +98,28 @@ def save_resumen_periodo(df: pd.DataFrame, periodo: str):
         client.table("resumen_mensual").insert(records[i:i + 500]).execute()
 
 
+def _fetch_all(query_fn) -> list:
+    """Pagina una consulta de Supabase hasta traer todas las filas."""
+    all_data, page_size, offset = [], 1000, 0
+    while True:
+        result = query_fn(offset, offset + page_size - 1)
+        all_data.extend(result.data or [])
+        if len(result.data or []) < page_size:
+            break
+        offset += page_size
+    return all_data
+
+
 def get_resumen(periodo: str = None) -> pd.DataFrame:
     client = get_client()
     if periodo:
-        result = (client.table("resumen_mensual")
-                  .select("*")
-                  .eq("periodo", periodo)
-                  .order("total_acv_ars", desc=True)
-                  .execute())
+        data = _fetch_all(lambda s, e: client.table("resumen_mensual")
+                          .select("*").eq("periodo", periodo)
+                          .order("total_acv_ars", desc=True).range(s, e).execute())
     else:
-        result = (client.table("resumen_mensual")
-                  .select("*")
-                  .order("total_acv_ars", desc=True)
-                  .execute())
-    return pd.DataFrame(result.data) if result.data else pd.DataFrame()
+        data = _fetch_all(lambda s, e: client.table("resumen_mensual")
+                          .select("*").order("total_acv_ars", desc=True).range(s, e).execute())
+    return pd.DataFrame(data) if data else pd.DataFrame()
 
 
 def get_periodos() -> list:
