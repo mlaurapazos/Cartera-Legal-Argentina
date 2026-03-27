@@ -9,7 +9,8 @@ from sqlalchemy import create_engine, text
 @st.cache_resource
 def get_engine():
     url = st.secrets["DATABASE_URL"]
-    # Supabase requires SSL
+    # Use psycopg3 dialect (compatible with Python 3.14+)
+    url = url.replace("postgresql://", "postgresql+psycopg://", 1)
     if "?" not in url:
         url += "?sslmode=require"
     return create_engine(url)
