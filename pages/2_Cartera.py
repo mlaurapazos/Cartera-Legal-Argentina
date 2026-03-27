@@ -45,6 +45,12 @@ with col_f3:
 with col_f4:
     busqueda = st.text_input("Buscar cliente", placeholder="Nombre...")
 
+col_f5, _ = st.columns([2, 4])
+with col_f5:
+    sel_facturacion = st.multiselect(
+        "Tipo de facturación", ["Anual", "Mensual"], default=[]
+    )
+
 # Filtro por importe mensual
 col_r1, col_r2 = st.columns([3, 1])
 with col_r1:
@@ -74,6 +80,8 @@ if sel_sus:
     df = df[df["producto_principal_suscripto"].isin(sel_sus)]
 if solo_ck:
     df = df[df["tiene_checkpoint"] == 1]
+if sel_facturacion:
+    df = df[df["tipo_facturacion"].isin(sel_facturacion)]
 if busqueda:
     df = df[df["account_name"].astype(str).str.upper().str.contains(busqueda.upper(), na=False)]
 df = df[(df["valor_mensual_ars"] >= rango_mens[0]) & (df["valor_mensual_ars"] <= rango_mens[1])]
