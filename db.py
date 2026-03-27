@@ -8,7 +8,11 @@ from sqlalchemy import create_engine, text
 
 @st.cache_resource
 def get_engine():
-    return create_engine(st.secrets["DATABASE_URL"])
+    url = st.secrets["DATABASE_URL"]
+    # Supabase requires SSL
+    if "?" not in url:
+        url += "?sslmode=require"
+    return create_engine(url)
 
 
 def get_conn():
