@@ -4,15 +4,24 @@ db.py — Operaciones PostgreSQL para Cartera Legal Analytics
 import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
+from urllib.parse import urlparse
 
 
 @st.cache_resource
 def get_engine():
-    url = st.secrets["DATABASE_URL"]
-    # Use psycopg3 dialect (compatible with Python 3.14+)
-    url = url.replace("postgresql://", "postgresql+psycopg://", 1)
-    if "?" not in url:
-        url += "?sslmode=require"
+    raw = st.secrets["DATABASE_URL"]
+    parsed = urlparse(raw)
+    # Build URL properly so special characters in password are handled
+    url = URL.create(
+        drivername="postgresql+psycopg",
+        username=parsed.username,
+        password=parsed.password,
+        host=parsed.hostname,
+        port=parsed.port or 5432,
+        database=parsed.path.lstrip("/"),
+        query={"sslmode": "require"},
+    )
     return create_engine(url)
 
 
