@@ -48,16 +48,21 @@ with col_f4:
 # Filtro por importe mensual
 col_r1, col_r2 = st.columns([3, 1])
 with col_r1:
-    min_mens = float(df["valor_mensual_ars"].min())
-    max_mens = float(df["valor_mensual_ars"].max())
-    rango_mens = st.slider(
-        "Facturación mensual (ARS)",
-        min_value=min_mens,
-        max_value=max_mens,
-        value=(min_mens, max_mens),
-        format="$ %,.0f",
-        step=max(1.0, round((max_mens - min_mens) / 1000, 0)),
-    )
+    vals = df["valor_mensual_ars"].fillna(0)
+    min_mens = float(vals.min())
+    max_mens = float(vals.max())
+    if max_mens > min_mens:
+        rango_mens = st.slider(
+            "Facturación mensual (ARS)",
+            min_value=min_mens,
+            max_value=max_mens,
+            value=(min_mens, max_mens),
+            format="$ %,.0f",
+            step=max(1.0, round((max_mens - min_mens) / 1000, 0)),
+        )
+    else:
+        rango_mens = (min_mens, max_mens)
+        st.caption(f"Facturación mensual: $ {min_mens:,.0f}")
 with col_r2:
     st.markdown("<br>", unsafe_allow_html=True)
     st.caption(f"$ {rango_mens[0]:,.0f} — $ {rango_mens[1]:,.0f}")
