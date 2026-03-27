@@ -14,7 +14,7 @@ def get_engine():
     parsed = urlparse(raw)
     # Build URL properly so special characters in password are handled
     url = URL.create(
-        drivername="postgresql+psycopg",
+        drivername="postgresql+pg8000",
         username=parsed.username,
         password=parsed.password,
         host=parsed.hostname,
