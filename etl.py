@@ -125,12 +125,8 @@ def build_resumen(conn, periodo: str) -> int:
         total_billing = mat_unicos["billing_value"].sum()
 
         # Tipo de facturación: Anual si ACV == Billing Value (tolerancia < 1 peso)
-        if abs(total_acv - total_billing) < 1:
-            tipo_facturacion = "Anual"
-            valor_mensual = round(total_acv / 12, 2)
-        else:
-            tipo_facturacion = "Mensual"
-            valor_mensual = round(total_billing, 2)
+        tipo_facturacion = "Anual" if abs(total_acv - total_billing) < 1 else "Mensual"
+        valor_mensual = round(total_acv / 12, 2)
 
         mat_por_tipo = mat_unicos.groupby("tipo")["mat_norm"].count()
         n_tematicas   = int(mat_por_tipo.get("Tematica", 0))
