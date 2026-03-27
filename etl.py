@@ -124,8 +124,8 @@ def build_resumen(conn, periodo: str) -> int:
         total_acv     = mat_unicos["acv_ars"].sum()
         total_billing = mat_unicos["billing_value"].sum()
 
-        # Tipo de facturación: Anual si billing ≈ ACV (±5%), Mensual si billing << ACV
-        if total_acv > 0 and abs(total_billing - total_acv) / total_acv <= 0.05:
+        # Tipo de facturación: Anual si ACV == Billing Value, Mensual si difieren
+        if round(total_acv, 2) == round(total_billing, 2):
             tipo_facturacion = "Anual"
             valor_mensual = round(total_acv / 12, 2)
         else:
