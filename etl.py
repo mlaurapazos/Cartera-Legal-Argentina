@@ -121,8 +121,16 @@ def build_resumen(conn, periodo: str) -> int:
         mat_unicos = g.drop_duplicates("mat_norm")
         mat_unicos = mat_unicos[~mat_unicos["mat_norm"].str.contains("HIGHQ|HIGH-Q", na=False)]
 
-        total_acv = mat_unicos["acv_ars"].sum()
-        valor_mensual = mat_unicos["billing_value"].sum()
+        total_acv     = mat_unicos["acv_ars"].sum()
+        total_billing = mat_unicos["billing_value"].sum()
+
+        # Tipo de facturación: Anual si billing ≈ ACV (±5%), Mensual si billing << ACV
+        if total_acv > 0 and abs(total_billing - total_acv) / total_acv <= 0.05:
+            tipo_facturacion = "Anual"
+            valor_mensual = round(total_acv / 12, 2)
+        else:
+            tipo_facturacion = "Mensual"
+            valor_mensual = round(total_billing, 2)
 
         mat_por_tipo = mat_unicos.groupby("tipo")["mat_norm"].count()
         n_tematicas   = int(mat_por_tipo.get("Tematica", 0))
@@ -136,15 +144,16 @@ def build_resumen(conn, periodo: str) -> int:
         )
 
         return pd.Series({
-            "account_name":             account_name,
-            "producto_principal_sf":    prod_sf,
-            "total_acv_ars":            round(total_acv, 2),
-            "valor_mensual_ars":        round(valor_mensual, 2),
-            "cant_tematicas":           n_tematicas,
-            "cant_bibliotecas":         n_bibliotecas,
-            "cant_revistas":            n_revistas,
-            "tiene_checkpoint":         int(tiene_checkpoint),
+            "account_name":                 account_name,
+            "producto_principal_sf":        prod_sf,
+            "total_acv_ars":                round(total_acv, 2),
+            "valor_mensual_ars":            valor_mensual,
+            "cant_tematicas":               n_tematicas,
+            "cant_bibliotecas":             n_bibliotecas,
+            "cant_revistas":                n_revistas,
+            "tiene_checkpoint":             int(tiene_checkpoint),
             "producto_principal_suscripto": prod_suscripto,
+            "tipo_facturacion":             tipo_facturacion,
         })
 
     resumen = df.groupby("sold_to_pt").apply(agg_cliente, include_groups=False).reset_index()

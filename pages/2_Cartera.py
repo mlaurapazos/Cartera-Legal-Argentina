@@ -130,6 +130,7 @@ display = df.rename(columns={
     "producto_principal_sf":         "Prod. SF",
     "total_acv_ars":                 "ACV ARS",
     "valor_mensual_ars":             "Mensual ARS",
+    "tipo_facturacion":              "Facturación",
     "cant_tematicas":                "Temáticas",
     "cant_bibliotecas":              "Bibliotecas",
     "cant_revistas":                 "Revistas",
