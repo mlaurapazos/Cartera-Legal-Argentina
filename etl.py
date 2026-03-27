@@ -111,6 +111,7 @@ def build_resumen(conn, periodo: str) -> int:
     df = df.merge(cl[["mat_norm", "tipo", "es_principal"]], on="mat_norm", how="left")
     df["tipo"] = df["tipo"].where(df["tipo"] != "None", None)
     df["acv_ars"] = pd.to_numeric(df["acv_ars"], errors="coerce")
+    df["billing_value"] = pd.to_numeric(df["billing_value"], errors="coerce")
 
     def agg_cliente(g):
         account_name = g["account_name"].dropna().iloc[0] if g["account_name"].notna().any() else None
@@ -121,6 +122,7 @@ def build_resumen(conn, periodo: str) -> int:
         mat_unicos = mat_unicos[~mat_unicos["mat_norm"].str.contains("HIGHQ|HIGH-Q", na=False)]
 
         total_acv = mat_unicos["acv_ars"].sum()
+        valor_mensual = mat_unicos["billing_value"].sum()
 
         mat_por_tipo = mat_unicos.groupby("tipo")["mat_norm"].count()
         n_tematicas   = int(mat_por_tipo.get("Tematica", 0))
@@ -137,7 +139,7 @@ def build_resumen(conn, periodo: str) -> int:
             "account_name":             account_name,
             "producto_principal_sf":    prod_sf,
             "total_acv_ars":            round(total_acv, 2),
-            "valor_mensual_ars":        round(total_acv / 12, 2),
+            "valor_mensual_ars":        round(valor_mensual, 2),
             "cant_tematicas":           n_tematicas,
             "cant_bibliotecas":         n_bibliotecas,
             "cant_revistas":            n_revistas,
