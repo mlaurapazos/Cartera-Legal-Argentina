@@ -1,152 +1,131 @@
 """
-db.py — Operaciones PostgreSQL para Cartera Legal Analytics
+db.py — Supabase (HTTPS) para Cartera Legal Analytics
 """
 import pandas as pd
 import streamlit as st
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import URL
-from urllib.parse import urlparse
+from supabase import create_client, Client
 
 
 @st.cache_resource
-def get_engine():
-    raw = st.secrets["DATABASE_URL"]
-    parsed = urlparse(raw)
-    # Build URL properly so special characters in password are handled
-    url = URL.create(
-        drivername="postgresql+pg8000",
-        username=parsed.username,
-        password=parsed.password,
-        host=parsed.hostname,
-        port=parsed.port or 5432,
-        database=parsed.path.lstrip("/"),
-        query={"sslmode": "require"},
+def get_client() -> Client:
+    return create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"],
     )
-    return create_engine(url)
 
 
 def get_conn():
-    """Retorna el engine SQLAlchemy (compatible con pd.read_sql y etl.py)."""
-    return get_engine()
+    """Compatibilidad con llamadas existentes — no se usa."""
+    return None
 
 
 def init_db():
-    engine = get_engine()
-    with engine.connect() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS raw_suscripciones (
-                fecha TEXT, account_name TEXT, producto_principal_sf TEXT,
-                producto TEXT, sold_to_pt TEXT, large_account TEXT,
-                cant_usuarios TEXT, customer_class TEXT, customer_group TEXT,
-                sector TEXT, subsector TEXT, industria_latam TEXT,
-                sub_industria_latam TEXT, pais TEXT, ciudad TEXT,
-                type_sf TEXT, tax_number TEXT, material TEXT,
-                material_desc TEXT, acv_ars REAL, max_acv REAL,
-                billing_value REAL, bu2 TEXT
-            )
-        """))
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS clasificaciones (
-                material TEXT PRIMARY KEY,
-                es_principal INTEGER DEFAULT 0,
-                producto_principal TEXT
-            )
-        """))
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS resumen_mensual (
-                periodo TEXT,
-                sold_to_pt TEXT,
-                account_name TEXT,
-                producto_principal_sf TEXT,
-                total_acv_ars REAL,
-                valor_mensual_ars REAL,
-                cant_tematicas INTEGER,
-                cant_bibliotecas INTEGER,
-                cant_revistas INTEGER,
-                tiene_checkpoint INTEGER,
-                producto_principal_suscripto TEXT,
-                PRIMARY KEY (periodo, sold_to_pt)
-            )
-        """))
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS upload_log (
-                id SERIAL PRIMARY KEY,
-                fuente TEXT,
-                periodo TEXT,
-                fecha_carga TEXT,
-                filas INTEGER
-            )
-        """))
-        conn.commit()
+    """Las tablas se crean desde el SQL Editor de Supabase (setup inicial)."""
+    pass
 
 
 def replace_raw(df: pd.DataFrame):
-    engine = get_engine()
-    df.to_sql("raw_suscripciones", engine, if_exists="replace", index=False)
+    client = get_client()
+    client.table("raw_suscripciones").delete().not_.is_("sold_to_pt", "null").execute()
+    records = df.where(pd.notna(df), None).to_dict(orient="records")
+    for i in range(0, len(records), 500):
+        client.table("raw_suscripciones").insert(records[i:i + 500]).execute()
 
 
 def save_clasificaciones(df: pd.DataFrame):
-    engine = get_engine()
-    df.to_sql("clasificaciones", engine, if_exists="replace", index=False)
+    client = get_client()
+    client.table("clasificaciones").delete().not_.is_("material", "null").execute()
+    records = df.where(pd.notna(df), None).to_dict(orient="records")
+    for i in range(0, len(records), 500):
+        client.table("clasificaciones").insert(records[i:i + 500]).execute()
 
 
 def get_clasificaciones() -> pd.DataFrame:
-    return pd.read_sql(
-        "SELECT * FROM clasificaciones ORDER BY material",
-        get_engine()
+    client = get_client()
+    result = client.table("clasificaciones").select("*").order("material").execute()
+    return pd.DataFrame(result.data) if result.data else pd.DataFrame(
+        columns=["material", "es_principal", "producto_principal"]
     )
 
 
 def clasificaciones_vacio() -> bool:
-    with get_engine().connect() as conn:
-        result = conn.execute(text("SELECT COUNT(*) FROM clasificaciones"))
-        return result.scalar() == 0
+    client = get_client()
+    result = client.table("clasificaciones").select("material", count="exact").limit(1).execute()
+    return (result.count or 0) == 0
+
+
+def get_raw_suscripciones() -> pd.DataFrame:
+    client = get_client()
+    all_data = []
+    page_size = 1000
+    offset = 0
+    while True:
+        result = (client.table("raw_suscripciones")
+                  .select("*")
+                  .range(offset, offset + page_size - 1)
+                  .execute())
+        all_data.extend(result.data)
+        if len(result.data) < page_size:
+            break
+        offset += page_size
+    return pd.DataFrame(all_data)
 
 
 def save_resumen_periodo(df: pd.DataFrame, periodo: str):
-    """Reemplaza el período en resumen_mensual (upsert completo del período)."""
-    engine = get_engine()
-    with engine.connect() as conn:
-        conn.execute(
-            text("DELETE FROM resumen_mensual WHERE periodo = :periodo"),
-            {"periodo": periodo}
-        )
-        conn.commit()
+    client = get_client()
+    client.table("resumen_mensual").delete().eq("periodo", periodo).execute()
     df["periodo"] = periodo
-    df.to_sql("resumen_mensual", engine, if_exists="append", index=False)
+    records = df.where(pd.notna(df), None).to_dict(orient="records")
+    for i in range(0, len(records), 500):
+        client.table("resumen_mensual").insert(records[i:i + 500]).execute()
 
 
 def get_resumen(periodo: str = None) -> pd.DataFrame:
+    client = get_client()
     if periodo:
-        return pd.read_sql(
-            "SELECT * FROM resumen_mensual WHERE periodo = %(periodo)s ORDER BY total_acv_ars DESC",
-            get_engine(), params={"periodo": periodo}
-        )
-    return pd.read_sql(
-        "SELECT * FROM resumen_mensual ORDER BY periodo DESC, total_acv_ars DESC",
-        get_engine()
-    )
+        result = (client.table("resumen_mensual")
+                  .select("*")
+                  .eq("periodo", periodo)
+                  .order("total_acv_ars", desc=True)
+                  .execute())
+    else:
+        result = (client.table("resumen_mensual")
+                  .select("*")
+                  .order("total_acv_ars", desc=True)
+                  .execute())
+    return pd.DataFrame(result.data) if result.data else pd.DataFrame()
 
 
 def get_periodos() -> list:
-    with get_engine().connect() as conn:
-        result = conn.execute(
-            text("SELECT DISTINCT periodo FROM resumen_mensual ORDER BY periodo DESC")
-        )
-        return [r[0] for r in result.fetchall()]
+    client = get_client()
+    result = (client.table("resumen_mensual")
+              .select("periodo")
+              .order("periodo", desc=True)
+              .execute())
+    seen, periodos = set(), []
+    for r in (result.data or []):
+        p = r["periodo"]
+        if p not in seen:
+            seen.add(p)
+            periodos.append(p)
+    return periodos
 
 
 def log_upload(fuente: str, periodo: str, filas: int):
-    with get_engine().connect() as conn:
-        conn.execute(
-            text("INSERT INTO upload_log (fuente, periodo, fecha_carga, filas) VALUES (:fuente, :periodo, NOW()::text, :filas)"),
-            {"fuente": fuente, "periodo": periodo, "filas": filas}
-        )
-        conn.commit()
+    client = get_client()
+    client.table("upload_log").insert({
+        "fuente": fuente,
+        "periodo": periodo,
+        "fecha_carga": pd.Timestamp.now().isoformat(),
+        "filas": filas,
+    }).execute()
 
 
 def get_upload_log() -> pd.DataFrame:
-    return pd.read_sql(
-        "SELECT * FROM upload_log ORDER BY fecha_carga DESC LIMIT 50",
-        get_engine()
-    )
+    client = get_client()
+    result = (client.table("upload_log")
+              .select("*")
+              .order("fecha_carga", desc=True)
+              .limit(50)
+              .execute())
+    return pd.DataFrame(result.data) if result.data else pd.DataFrame()

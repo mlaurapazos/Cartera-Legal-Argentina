@@ -1,7 +1,6 @@
 """
 etl.py — Lógica de procesamiento Cartera Legal Analytics
 """
-import sqlite3
 import pandas as pd
 import numpy as np
 from io import BytesIO
@@ -60,7 +59,7 @@ def load_suscripciones(file_bytes: bytes) -> pd.DataFrame:
     return df
 
 
-def seed_clasificaciones(conn: sqlite3.Connection, file_bytes: bytes):
+def seed_clasificaciones(conn, file_bytes: bytes):
     """Siembra la tabla clasificaciones desde la hoja 'Clasificaciones' del Excel."""
     cl = pd.read_excel(BytesIO(file_bytes), sheet_name="Clasificaciones")
     cl = cl.rename(columns={
@@ -94,14 +93,14 @@ def _producto_principal_suscripto(tipos_principales: pd.Series, n_tematicas: int
     return None
 
 
-def build_resumen(conn: sqlite3.Connection, periodo: str) -> int:
+def build_resumen(conn, periodo: str) -> int:
     """
     Lee raw_suscripciones + clasificaciones, calcula resumen por cliente,
     y lo persiste en resumen_mensual para el período dado.
     Retorna el número de clientes procesados.
     """
-    df = pd.read_sql("SELECT * FROM raw_suscripciones", conn)
-    cl = pd.read_sql("SELECT * FROM clasificaciones", conn)
+    df = db.get_raw_suscripciones()
+    cl = db.get_clasificaciones()
 
     # Normalizar para join
     df["mat_norm"] = df["material_desc"].astype(str).str.strip().str.upper()
