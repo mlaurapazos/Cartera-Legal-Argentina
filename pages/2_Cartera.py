@@ -27,6 +27,11 @@ if not periodos:
 periodo = st.selectbox("Período", periodos, index=0)
 df = db.get_resumen(periodo)
 
+# Columna derivada: no utiliza el producto (uso SIL + uso LLN == 0)
+tiene_uso = "uso_sil" in df.columns and "uso_lln" in df.columns
+if tiene_uso:
+    df["no_uso"] = ((df["uso_sil"].fillna(0) + df["uso_lln"].fillna(0)) == 0)
+
 # ── Filtros ───────────────────────────────────────────────────────────────────
 st.markdown("#### Filtros")
 col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 1, 2])
@@ -41,6 +46,7 @@ with col_f2:
 
 with col_f3:
     solo_ck = st.checkbox("Solo Checkpoint")
+    solo_sin_uso = st.checkbox("Solo sin uso", disabled=not tiene_uso)
 
 with col_f4:
     busqueda = st.text_input("Buscar cliente", placeholder="Nombre...")
@@ -80,6 +86,8 @@ if sel_sus:
     df = df[df["producto_principal_suscripto"].isin(sel_sus)]
 if solo_ck:
     df = df[df["tiene_checkpoint"] == 1]
+if solo_sin_uso and tiene_uso:
+    df = df[df["no_uso"] == True]
 if sel_facturacion:
     df = df[df["tipo_facturacion"].isin(sel_facturacion)]
 if busqueda:
@@ -157,9 +165,12 @@ display = df.rename(columns={
     "producto_principal_suscripto":  "Prod. Principal",
     "uso_sil":                       "Uso SIL",
     "uso_lln":                       "Uso LLN",
+    "no_uso":                        "No utiliza el producto",
 }).copy()
 
 display["Checkpoint"] = display["Checkpoint"].map({1: "✅", 0: "—", True: "✅", False: "—"})
+if "No utiliza el producto" in display.columns:
+    display["No utiliza el producto"] = display["No utiliza el producto"].map({True: "✅", False: "—"})
 
 fmt = {"ACV ARS": "$ {:,.0f}", "Mensual ARS": "$ {:,.0f}"}
 if "Uso SIL" in display.columns:
