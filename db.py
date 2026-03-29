@@ -119,7 +119,14 @@ def get_resumen(periodo: str = None) -> pd.DataFrame:
     else:
         data = _fetch_all(lambda s, e: client.table("resumen_mensual")
                           .select("*").order("total_acv_ars", desc=True).range(s, e).execute())
-    return pd.DataFrame(data) if data else pd.DataFrame()
+    df = pd.DataFrame(data) if data else pd.DataFrame()
+    if not df.empty and periodo:
+        uso = get_uso(periodo)
+        if not uso.empty:
+            df = df.merge(uso, on="sold_to_pt", how="left")
+            df["uso_sil"] = df["uso_sil"].fillna(0).astype(int)
+            df["uso_lln"] = df["uso_lln"].fillna(0).astype(int)
+    return df
 
 
 def get_periodos() -> list:
@@ -145,6 +152,30 @@ def log_upload(fuente: str, periodo: str, filas: int):
         "fecha_carga": pd.Timestamp.now().isoformat(),
         "filas": filas,
     }).execute()
+
+
+def save_uso_periodo(df: pd.DataFrame, periodo: str):
+    client = get_client()
+    client.table("uso_mensual").delete().eq("periodo", periodo).execute()
+    df = df.copy()
+    df["periodo"] = periodo
+    records = _to_records(df)
+    for i in range(0, len(records), 500):
+        client.table("uso_mensual").insert(records[i:i + 500]).execute()
+
+
+def get_uso(periodo: str) -> pd.DataFrame:
+    try:
+        client = get_client()
+        result = (client.table("uso_mensual")
+                  .select("sold_to_pt,uso_sil,uso_lln")
+                  .eq("periodo", periodo)
+                  .execute())
+        return pd.DataFrame(result.data) if result.data else pd.DataFrame(
+            columns=["sold_to_pt", "uso_sil", "uso_lln"]
+        )
+    except Exception:
+        return pd.DataFrame(columns=["sold_to_pt", "uso_sil", "uso_lln"])
 
 
 def get_upload_log() -> pd.DataFrame:

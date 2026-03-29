@@ -93,6 +93,39 @@ def _producto_principal_suscripto(tipos_principales: pd.Series, n_tematicas: int
     return None
 
 
+def load_uso(file_bytes: bytes) -> pd.DataFrame:
+    """
+    Lee el Excel de detalle de uso (solapas USO SIL y USO LLN).
+    Devuelve un DataFrame con sold_to_pt, uso_sil, uso_lln (total de eventos por cliente).
+    """
+    uso_sil = pd.read_excel(BytesIO(file_bytes), sheet_name="USO SIL")
+    uso_lln = pd.read_excel(BytesIO(file_bytes), sheet_name="USO LLN")
+
+    sil_counts = (
+        uso_sil["m-user-sap_customer_number"]
+        .dropna()
+        .astype(str).str.strip()
+        .value_counts()
+    )
+    lln_counts = (
+        uso_lln["SAP ID"]
+        .dropna()
+        .astype(str).str.strip()
+        .value_counts()
+    )
+
+    df_sil = sil_counts.rename("uso_sil").reset_index()
+    df_sil.columns = ["sold_to_pt", "uso_sil"]
+
+    df_lln = lln_counts.rename("uso_lln").reset_index()
+    df_lln.columns = ["sold_to_pt", "uso_lln"]
+
+    merged = df_sil.merge(df_lln, on="sold_to_pt", how="outer")
+    merged["uso_sil"] = merged["uso_sil"].fillna(0).astype(int)
+    merged["uso_lln"] = merged["uso_lln"].fillna(0).astype(int)
+    return merged
+
+
 def build_resumen(conn, periodo: str) -> int:
     """
     Lee raw_suscripciones + clasificaciones, calcula resumen por cliente,

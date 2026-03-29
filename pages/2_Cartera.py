@@ -97,6 +97,17 @@ k2.metric("ACV Total (ARS)", f"$ {acv_total:,.0f}")
 k3.metric("Facturación mensual (ARS)", f"$ {mens_total:,.0f}")
 k4.metric("ACV promedio por cliente", f"$ {avg_cliente:,.0f}")
 
+if "uso_sil" in df.columns or "uso_lln" in df.columns:
+    u1, u2, u3 = st.columns(3)
+    if "uso_sil" in df.columns:
+        n_sil = int((df["uso_sil"] > 0).sum())
+        u1.metric("Clientes con uso SIL", f"{n_sil:,}", f"{n_sil/len(df)*100:.0f}%" if len(df) else "—")
+    if "uso_lln" in df.columns:
+        n_lln = int((df["uso_lln"] > 0).sum())
+        u2.metric("Clientes con uso LLN", f"{n_lln:,}", f"{n_lln/len(df)*100:.0f}%" if len(df) else "—")
+    if "uso_sil" in df.columns:
+        u3.metric("Total eventos SIL", f"{int(df['uso_sil'].sum()):,}")
+
 # ── Gráfico distribución ──────────────────────────────────────────────────────
 st.subheader("Distribución por Producto Principal Suscripto")
 dist = (
@@ -144,14 +155,22 @@ display = df.rename(columns={
     "cant_revistas":                 "Revistas",
     "tiene_checkpoint":              "Checkpoint",
     "producto_principal_suscripto":  "Prod. Principal",
+    "uso_sil":                       "Uso SIL",
+    "uso_lln":                       "Uso LLN",
 }).copy()
 
 display["Checkpoint"] = display["Checkpoint"].map({1: "✅", 0: "—", True: "✅", False: "—"})
 
+fmt = {"ACV ARS": "$ {:,.0f}", "Mensual ARS": "$ {:,.0f}"}
+if "Uso SIL" in display.columns:
+    fmt["Uso SIL"] = "{:,}"
+if "Uso LLN" in display.columns:
+    fmt["Uso LLN"] = "{:,}"
+
 styled = (
     display.style
     .applymap(color_prod, subset=["Prod. Principal"])
-    .format({"ACV ARS": "$ {:,.0f}", "Mensual ARS": "$ {:,.0f}"})
+    .format(fmt)
 )
 st.dataframe(styled, use_container_width=True, hide_index=True, height=500)
 

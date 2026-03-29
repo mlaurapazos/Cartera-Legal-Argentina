@@ -97,6 +97,46 @@ with st.expander("🔄 Cargar clasificaciones desde Excel (reemplaza las existen
             except Exception as e:
                 st.error(f"Error: {e}")
 
+# ── Sección 3: Detalle de uso ─────────────────────────────────────────────────
+st.divider()
+st.subheader("Detalle de uso — carga mensual")
+st.caption("Archivo con solapas **USO SIL** y **USO LLN**. Ejemplo: `Cartera Legal - Detalle de uso 202602.xlsx`")
+
+archivo_uso = st.file_uploader(
+    "Seleccioná el Excel de detalle de uso",
+    type=["xlsx"],
+    key="uploader_uso",
+)
+
+periodo_uso_default = ""
+if archivo_uso:
+    m = re.search(r"(\d{4})(\d{2})", archivo_uso.name)
+    if m:
+        periodo_uso_default = f"{m.group(1)}-{m.group(2)}"
+
+periodo_uso = st.text_input(
+    "Período del uso (YYYY-MM)",
+    value=periodo_uso_default,
+    placeholder="2026-02",
+    key="periodo_uso",
+)
+
+if st.button("⚡ Procesar uso", type="primary", disabled=(archivo_uso is None or not periodo_uso)):
+    with st.spinner("Procesando uso..."):
+        try:
+            df_uso = etl.load_uso(archivo_uso.read())
+            db.save_uso_periodo(df_uso, periodo_uso)
+            n_sil = int((df_uso["uso_sil"] > 0).sum())
+            n_lln = int((df_uso["uso_lln"] > 0).sum())
+            st.success(
+                f"✅ Uso cargado para **{periodo_uso}**: "
+                f"{n_sil} clientes con eventos SIL, {n_lln} con eventos LLN"
+            )
+            db.log_upload("uso", periodo_uso, len(df_uso))
+            st.toast(f"Uso {periodo_uso} cargado", icon="✅")
+        except Exception as e:
+            st.error(f"Error al procesar uso: {e}")
+
 # ── Historial de cargas ────────────────────────────────────────────────────────
 st.divider()
 st.subheader("Historial de cargas")
