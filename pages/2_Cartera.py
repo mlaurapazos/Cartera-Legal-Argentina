@@ -32,6 +32,9 @@ tiene_uso = "uso_sil" in df.columns and "uso_lln" in df.columns
 if tiene_uso:
     df["no_uso"] = ((df["uso_sil"].fillna(0) + df["uso_lln"].fillna(0)) == 0)
 
+# Columnas de deuda
+tiene_aging = "deuda_90" in df.columns
+
 # ── Filtros ───────────────────────────────────────────────────────────────────
 st.markdown("#### Filtros")
 col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 1, 2])
@@ -51,11 +54,20 @@ with col_f3:
 with col_f4:
     busqueda = st.text_input("Buscar cliente", placeholder="Nombre...")
 
-col_f5, _ = st.columns([2, 4])
+col_f5, col_f6 = st.columns([2, 3])
 with col_f5:
     sel_facturacion = st.multiselect(
         "Tipo de facturación", ["Anual", "Mensual"], default=[]
     )
+with col_f6:
+    if tiene_aging:
+        filtro_deuda = st.radio(
+            "Deuda (> 90 días)",
+            ["Todos", "Con deuda", "Sin deuda"],
+            horizontal=True,
+        )
+    else:
+        filtro_deuda = "Todos"
 
 # Filtro por importe mensual
 col_r1, col_r2 = st.columns([3, 1])
@@ -90,6 +102,10 @@ if solo_sin_uso and tiene_uso:
     df = df[df["no_uso"] == True]
 if sel_facturacion:
     df = df[df["tipo_facturacion"].isin(sel_facturacion)]
+if tiene_aging and filtro_deuda == "Con deuda":
+    df = df[df["deuda_90"] > 0]
+elif tiene_aging and filtro_deuda == "Sin deuda":
+    df = df[df["deuda_90"] <= 0]
 if busqueda:
     df = df[df["account_name"].astype(str).str.upper().str.contains(busqueda.upper(), na=False)]
 df = df[(df["valor_mensual_ars"] >= rango_mens[0]) & (df["valor_mensual_ars"] <= rango_mens[1])]
@@ -104,6 +120,15 @@ k1.metric("Clientes", f"{len(df):,}")
 k2.metric("ACV Total (ARS)", f"$ {acv_total:,.0f}")
 k3.metric("Facturación mensual (ARS)", f"$ {mens_total:,.0f}")
 k4.metric("ACV promedio por cliente", f"$ {avg_cliente:,.0f}")
+
+if tiene_aging:
+    d1, d2, d3 = st.columns(3)
+    n_d90  = int((df["deuda_90"]  > 0).sum())
+    n_d180 = int((df["deuda_180"] > 0).sum())
+    n_d360 = int((df["deuda_360"] > 0).sum())
+    d1.metric("Clientes Deuda > 90d",  f"{n_d90:,}",  f"{n_d90/len(df)*100:.0f}%"  if len(df) else "—")
+    d2.metric("Clientes Deuda > 180d", f"{n_d180:,}", f"{n_d180/len(df)*100:.0f}%" if len(df) else "—")
+    d3.metric("Clientes Deuda > 360d", f"{n_d360:,}", f"{n_d360/len(df)*100:.0f}%" if len(df) else "—")
 
 if "uso_sil" in df.columns or "uso_lln" in df.columns:
     u1, u2, u3 = st.columns(3)
@@ -166,6 +191,9 @@ display = df.rename(columns={
     "uso_sil":                       "Uso SIL",
     "uso_lln":                       "Uso LLN",
     "no_uso":                        "No utiliza el producto",
+    "deuda_90":                      "Deuda > 90",
+    "deuda_180":                     "Deuda > 180",
+    "deuda_360":                     "Deuda > 360",
 }).copy()
 
 display["Checkpoint"] = display["Checkpoint"].map({1: "✅", 0: "—", True: "✅", False: "—"})
@@ -177,6 +205,9 @@ if "Uso SIL" in display.columns:
     fmt["Uso SIL"] = "{:,}"
 if "Uso LLN" in display.columns:
     fmt["Uso LLN"] = "{:,}"
+for col_deuda in ["Deuda > 90", "Deuda > 180", "Deuda > 360"]:
+    if col_deuda in display.columns:
+        fmt[col_deuda] = "$ {:,.0f}"
 
 styled = (
     display.style

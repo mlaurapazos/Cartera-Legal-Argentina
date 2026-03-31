@@ -137,6 +137,48 @@ if st.button("⚡ Procesar uso", type="primary", disabled=(archivo_uso is None o
         except Exception as e:
             st.error(f"Error al procesar uso: {e}")
 
+# ── Sección 4: Aging (deuda) ──────────────────────────────────────────────────
+st.divider()
+st.subheader("Aging / Deuda — carga mensual")
+st.caption(
+    "Archivo de aging con columnas **Customer Number**, **Deuda > 90**, **Deuda > 180**, **Over 360 Days**. "
+    "Ejemplo: `Aging 202602.xlsx`"
+)
+
+archivo_aging = st.file_uploader(
+    "Seleccioná el Excel de Aging",
+    type=["xlsx"],
+    key="uploader_aging",
+)
+
+periodo_aging_default = ""
+if archivo_aging:
+    m = re.search(r"(\d{4})(\d{2})", archivo_aging.name)
+    if m:
+        periodo_aging_default = f"{m.group(1)}-{m.group(2)}"
+
+periodo_aging = st.text_input(
+    "Período del aging (YYYY-MM)",
+    value=periodo_aging_default,
+    placeholder="2026-02",
+    key="periodo_aging",
+)
+
+if st.button("⚡ Procesar aging", type="primary", disabled=(archivo_aging is None or not periodo_aging)):
+    with st.spinner("Procesando aging..."):
+        try:
+            df_aging = etl.load_aging(archivo_aging.read())
+            db.save_aging_periodo(df_aging, periodo_aging)
+            n_deuda = int((df_aging["deuda_90"] > 0).sum())
+            st.success(
+                f"✅ Aging cargado para **{periodo_aging}**: "
+                f"{len(df_aging):,} clientes procesados, {n_deuda:,} con deuda > 90 días"
+            )
+            db.log_upload("aging", periodo_aging, len(df_aging))
+            st.toast(f"Aging {periodo_aging} cargado", icon="✅")
+        except Exception as e:
+            st.error(f"Error al procesar aging: {e}")
+
 # ── Historial de cargas ────────────────────────────────────────────────────────
 st.divider()
 st.subheader("Historial de cargas")

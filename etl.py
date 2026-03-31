@@ -93,6 +93,33 @@ def _producto_principal_suscripto(tipos_principales: pd.Series, n_tematicas: int
     return None
 
 
+def load_aging(file_bytes: bytes) -> pd.DataFrame:
+    """
+    Lee el Excel de Aging (deuda por cliente).
+    Devuelve DataFrame con sold_to_pt, deuda_90, deuda_180, deuda_360.
+    - Deuda > 90  ← columna "Deuda > 90" del archivo
+    - Deuda > 180 ← columna "Deuda > 180" del archivo
+    - Deuda > 360 ← columna "Over 360 Days" del archivo
+    """
+    df = pd.read_excel(BytesIO(file_bytes))
+
+    df = df[df["Customer Number"].notna()].copy()
+    df["sold_to_pt"] = df["Customer Number"].apply(lambda x: str(int(float(x))))
+
+    def _col(df, name):
+        return pd.to_numeric(df[name], errors="coerce").fillna(0) if name in df.columns else 0
+
+    df["deuda_90"]  = _col(df, "Deuda > 90")
+    df["deuda_180"] = _col(df, "Deuda > 180")
+    df["deuda_360"] = _col(df, "Over 360 Days")
+
+    return df.groupby("sold_to_pt").agg(
+        deuda_90=("deuda_90", "sum"),
+        deuda_180=("deuda_180", "sum"),
+        deuda_360=("deuda_360", "sum"),
+    ).reset_index()
+
+
 def load_uso(file_bytes: bytes) -> pd.DataFrame:
     """
     Lee el Excel de detalle de uso (solapas USO SIL y USO LLN).
