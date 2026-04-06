@@ -211,7 +211,7 @@ for col_deuda in ["Deuda > 90", "Deuda > 180", "Deuda > 360"]:
 
 styled = (
     display.style
-    .applymap(color_prod, subset=["Prod. Principal"])
+    .map(color_prod, subset=["Prod. Principal"])
     .format(fmt)
 )
 st.dataframe(styled, use_container_width=True, hide_index=True, height=500)
