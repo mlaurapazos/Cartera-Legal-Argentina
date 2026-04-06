@@ -119,7 +119,40 @@ with st.expander("🔄 Cargar clasificaciones (solo para detección de Checkpoin
             except Exception as e:
                 st.error(f"Error: {e}")
 
-# ── Sección 3: Detalle de uso ─────────────────────────────────────────────────
+# ── Sección 3: Equivalencias WL (precios nuevos) ──────────────────────────────
+st.divider()
+st.subheader("Equivalencias WL — precios nuevos")
+st.caption(
+    "Archivo **2026-Eq Materiales WL.xlsx** con hojas **ACTUALIZADO MAT PROD** (equivalencias) "
+    "y **Precios** (ACV nuevo). Se usa para calcular ACV Anual/Mensual Nuevo por cliente."
+)
+
+n_equiv = len(db.get_equiv_wl())
+if n_equiv > 0:
+    st.info(f"Ya hay **{n_equiv} equivalencias WL** cargadas.")
+
+with st.expander("🔄 Cargar equivalencias y precios WL (reemplaza las existentes)"):
+    st.warning("Esto reemplazará las equivalencias y precios WL actuales y recalculará todos los períodos.")
+    archivo_wl = st.file_uploader(
+        "Seleccioná el Excel de equivalencias WL",
+        type=["xlsx"],
+        key="uploader_wl",
+    )
+    if st.button("Seed Equivalencias WL", disabled=archivo_wl is None):
+        with st.spinner("Cargando equivalencias y precios..."):
+            try:
+                n_eq, n_pr = etl.seed_equiv_wl(db.get_conn(), archivo_wl.read())
+                st.success(f"✅ {n_eq} equivalencias y {n_pr} precios WL cargados.")
+                periodos = db.get_periodos()
+                if periodos:
+                    with st.spinner(f"Recalculando {len(periodos)} período(s)..."):
+                        for p in periodos:
+                            etl.build_resumen(db.get_conn(), p)
+                    st.info(f"Resumen recalculado para {len(periodos)} período(s).")
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+# ── Sección 4: Detalle de uso ─────────────────────────────────────────────────
 st.divider()
 st.subheader("Detalle de uso — carga mensual")
 st.caption("Archivo con solapas **USO SIL** y **USO LLN**. Ejemplo: `Cartera Legal - Detalle de uso 202602.xlsx`")

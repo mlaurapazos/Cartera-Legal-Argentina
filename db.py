@@ -178,6 +178,44 @@ def log_upload(fuente: str, periodo: str, filas: int):
     }).execute()
 
 
+def save_equiv_wl(df: pd.DataFrame):
+    client = get_client()
+    client.table("equiv_wl").delete().not_.is_("mat_actual", "null").execute()
+    records = _to_records(df)
+    for i in range(0, len(records), 500):
+        client.table("equiv_wl").insert(records[i:i + 500]).execute()
+
+
+def get_equiv_wl() -> pd.DataFrame:
+    try:
+        client = get_client()
+        result = client.table("equiv_wl").select("*").execute()
+        return pd.DataFrame(result.data) if result.data else pd.DataFrame(
+            columns=["mat_actual", "mat_nuevo_1", "mat_nuevo_2", "mat_nuevo_3"]
+        )
+    except Exception:
+        return pd.DataFrame(columns=["mat_actual", "mat_nuevo_1", "mat_nuevo_2", "mat_nuevo_3"])
+
+
+def save_precios_wl(df: pd.DataFrame):
+    client = get_client()
+    client.table("precios_wl").delete().not_.is_("material", "null").execute()
+    records = _to_records(df)
+    for i in range(0, len(records), 500):
+        client.table("precios_wl").insert(records[i:i + 500]).execute()
+
+
+def get_precios_wl() -> pd.DataFrame:
+    try:
+        client = get_client()
+        result = client.table("precios_wl").select("*").execute()
+        return pd.DataFrame(result.data) if result.data else pd.DataFrame(
+            columns=["material", "acv_anual", "acv_mensual"]
+        )
+    except Exception:
+        return pd.DataFrame(columns=["material", "acv_anual", "acv_mensual"])
+
+
 def save_uso_periodo(df: pd.DataFrame, periodo: str):
     client = get_client()
     client.table("uso_mensual").delete().eq("periodo", periodo).execute()

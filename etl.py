@@ -7,6 +7,9 @@ from io import BytesIO
 
 import db
 
+# Materiales Westlaw excluyentes: solo el de mayor valor por cliente
+WL_EXCLUSIVOS = {"43570954", "43570951", "43572801"}
+
 # Mapeo PRODUC (nueva estructura) → nombre de producto y prioridad
 PRODUC_PRODUCTO = {
     "FULL": "TR Full",
@@ -102,6 +105,103 @@ def seed_estructura(conn, file_bytes: bytes) -> int:
     df = df[["material", "descripcion", "formato", "tem_gen", "produc", "lln_sil"]].drop_duplicates("material")
     db.save_estructura(df)
     return len(df)
+
+
+def seed_equiv_wl(conn, file_bytes: bytes) -> tuple:
+    """Siembra equiv_wl y precios_wl desde el Excel 2026-Eq Materiales WL."""
+    def _safe_code(x):
+        if pd.isna(x):
+            return None
+        try:
+            return str(int(float(x)))
+        except (ValueError, TypeError):
+            return None
+
+    # Equivalencias (filas 0-1 son títulos, datos desde fila 2)
+    eq = pd.read_excel(BytesIO(file_bytes), sheet_name="ACTUALIZADO MAT PROD", header=None)
+    eq = eq.iloc[2:].copy()
+    eq_clean = pd.DataFrame({
+        "mat_actual":  eq.iloc[:, 0].apply(_safe_code),
+        "mat_nuevo_1": eq.iloc[:, 7].apply(_safe_code),
+        "mat_nuevo_2": eq.iloc[:, 9].apply(_safe_code),
+        "mat_nuevo_3": eq.iloc[:, 11].apply(_safe_code),
+    })
+    eq_clean = eq_clean[eq_clean["mat_actual"].notna()].drop_duplicates("mat_actual")
+    db.save_equiv_wl(eq_clean)
+
+    # Precios (fila 0 es header, datos desde fila 1)
+    pr = pd.read_excel(BytesIO(file_bytes), sheet_name="Precios", header=None)
+    pr = pr.iloc[1:].copy()
+    pr_clean = pd.DataFrame({
+        "material":    pr.iloc[:, 0].apply(_safe_code),
+        "acv_anual":   pd.to_numeric(pr.iloc[:, 2], errors="coerce"),
+        "acv_mensual": pd.to_numeric(pr.iloc[:, 3], errors="coerce"),
+    })
+    pr_clean = pr_clean[pr_clean["material"].notna()].drop_duplicates("material")
+    db.save_precios_wl(pr_clean)
+
+    return len(eq_clean), len(pr_clean)
+
+
+def _calc_acv_nuevo(df: pd.DataFrame, equiv: pd.DataFrame, precios: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calcula ACV nuevo por cliente aplicando equivalencias WL.
+    Reglas:
+    - Cada material nuevo se suma UNA SOLA VEZ por cliente.
+    - Los 3 materiales WL exclusivos (ADVANCED ONLINE, +PAPEL, CORE) son excluyentes:
+      si un cliente tiene varios, se queda solo con el de mayor valor.
+    """
+    precios_dict = {
+        str(row["material"]): {
+            "acv_anual":   float(row["acv_anual"]   or 0),
+            "acv_mensual": float(row["acv_mensual"] or 0),
+        }
+        for _, row in precios.iterrows()
+        if pd.notna(row["material"])
+    }
+
+    equiv_lookup: dict[str, list[str]] = {}
+    for _, row in equiv.iterrows():
+        mat = str(row["mat_actual"]) if pd.notna(row["mat_actual"]) else None
+        if not mat:
+            continue
+        nuevos = [
+            str(n) for n in [row.get("mat_nuevo_1"), row.get("mat_nuevo_2"), row.get("mat_nuevo_3")]
+            if pd.notna(n) and n is not None
+        ]
+        equiv_lookup[mat] = nuevos
+
+    results = []
+    for sold_to_pt, g in df.groupby("sold_to_pt"):
+        materiales = set(g["mat_code"].dropna().unique())
+
+        # Recopilar todos los materiales nuevos únicos
+        nuevos: set[str] = set()
+        for mat in materiales:
+            for nuevo in equiv_lookup.get(mat, []):
+                nuevos.add(nuevo)
+
+        # Exclusión Westlaw: conservar solo el de mayor valor
+        wl_candidatos = nuevos & WL_EXCLUSIVOS
+        if len(wl_candidatos) > 1:
+            mejor_wl = max(
+                wl_candidatos,
+                key=lambda m: precios_dict.get(m, {}).get("acv_anual", 0),
+            )
+            nuevos = (nuevos - WL_EXCLUSIVOS) | {mejor_wl}
+
+        acv_anual   = sum(precios_dict.get(m, {}).get("acv_anual",   0) for m in nuevos)
+        acv_mensual = sum(precios_dict.get(m, {}).get("acv_mensual", 0) for m in nuevos)
+
+        results.append({
+            "sold_to_pt":        sold_to_pt,
+            "acv_anual_nuevo":   round(acv_anual,   2),
+            "acv_mensual_nuevo": round(acv_mensual, 2),
+        })
+
+    return pd.DataFrame(results) if results else pd.DataFrame(
+        columns=["sold_to_pt", "acv_anual_nuevo", "acv_mensual_nuevo"]
+    )
 
 
 def load_aging(file_bytes: bytes) -> pd.DataFrame:
@@ -262,6 +362,22 @@ def build_resumen(conn, periodo: str) -> int:
 
     resumen = df.groupby("sold_to_pt").apply(agg_cliente, include_groups=False).reset_index()
     resumen = resumen.sort_values("total_acv_ars", ascending=False)
+
+    # ── ACV Nuevo (equivalencias WL) ──────────────────────────────────────────
+    equiv   = db.get_equiv_wl()
+    precios = db.get_precios_wl()
+    if not equiv.empty and not precios.empty:
+        acv_nuevo = _calc_acv_nuevo(df, equiv, precios)
+        resumen = resumen.merge(acv_nuevo, on="sold_to_pt", how="left")
+        resumen["acv_anual_nuevo"]   = resumen["acv_anual_nuevo"].fillna(0).round(2)
+        resumen["acv_mensual_nuevo"] = resumen["acv_mensual_nuevo"].fillna(0).round(2)
+        resumen["acv_dif_anual"]     = (resumen["acv_anual_nuevo"]   - resumen["total_acv_ars"]).round(2)
+        resumen["acv_dif_mensual"]   = (resumen["acv_mensual_nuevo"] - resumen["valor_mensual_ars"]).round(2)
+    else:
+        resumen["acv_anual_nuevo"]   = None
+        resumen["acv_mensual_nuevo"] = None
+        resumen["acv_dif_anual"]     = None
+        resumen["acv_dif_mensual"]   = None
 
     db.save_resumen_periodo(resumen, periodo)
     return len(resumen)

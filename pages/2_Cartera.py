@@ -180,8 +180,12 @@ display = df.rename(columns={
     "sold_to_pt":                    "SAP",
     "account_name":                  "Cliente",
     "producto_principal_sf":         "Prod. SF",
-    "total_acv_ars":                 "ACV ARS",
-    "valor_mensual_ars":             "Mensual ARS",
+    "total_acv_ars":                 "ACV Actual Anual",
+    "valor_mensual_ars":             "ACV Actual Mensual",
+    "acv_anual_nuevo":               "ACV Anual Nuevo",
+    "acv_mensual_nuevo":             "ACV Mensual Nuevo",
+    "acv_dif_anual":                 "ACV Dif. Anual",
+    "acv_dif_mensual":               "ACV Dif. Mensual",
     "tipo_facturacion":              "Facturación",
     "cant_tematicas":                "Temáticas",
     "cant_bibliotecas":              "Bibliotecas",
@@ -196,11 +200,28 @@ display = df.rename(columns={
     "deuda_360":                     "Deuda > 360",
 }).copy()
 
+# Orden explícito de columnas
+COLS_ORDER = [
+    "SAP", "Cliente", "Prod. SF", "Prod. Principal",
+    "ACV Actual Anual", "ACV Actual Mensual",
+    "ACV Anual Nuevo", "ACV Mensual Nuevo", "ACV Dif. Anual", "ACV Dif. Mensual",
+    "Facturación", "Temáticas", "Bibliotecas", "Revistas", "Checkpoint",
+    "Uso SIL", "Uso LLN", "No utiliza el producto",
+    "Deuda > 90", "Deuda > 180", "Deuda > 360",
+]
+display = display[[c for c in COLS_ORDER if c in display.columns]]
+
 display["Checkpoint"] = display["Checkpoint"].map({1: "✅", 0: "—", True: "✅", False: "—"})
 if "No utiliza el producto" in display.columns:
     display["No utiliza el producto"] = display["No utiliza el producto"].map({True: "✅", False: "—"})
 
-fmt = {"ACV ARS": "$ {:,.0f}", "Mensual ARS": "$ {:,.0f}"}
+fmt = {}
+for col in ["ACV Actual Anual", "ACV Actual Mensual", "ACV Anual Nuevo", "ACV Mensual Nuevo"]:
+    if col in display.columns:
+        fmt[col] = "$ {:,.0f}"
+for col in ["ACV Dif. Anual", "ACV Dif. Mensual"]:
+    if col in display.columns:
+        fmt[col] = "$ {:+,.0f}"
 if "Uso SIL" in display.columns:
     fmt["Uso SIL"] = "{:,}"
 if "Uso LLN" in display.columns:
@@ -212,7 +233,7 @@ for col_deuda in ["Deuda > 90", "Deuda > 180", "Deuda > 360"]:
 styled = (
     display.style
     .map(color_prod, subset=["Prod. Principal"])
-    .format(fmt)
+    .format(fmt, na_rep="—")
 )
 st.dataframe(styled, use_container_width=True, hide_index=True, height=500)
 
