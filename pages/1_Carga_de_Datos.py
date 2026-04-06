@@ -64,19 +64,44 @@ if procesar and archivo and periodo:
         except Exception as e:
             st.error(f"Error al procesar: {e}")
 
-# ── Sección 2: Seed de Clasificaciones ────────────────────────────────────────
+# ── Sección 2: Seed de Estructura de planes ───────────────────────────────────
 st.divider()
-st.subheader("Clasificaciones de materiales")
+st.subheader("Estructura de planes — seed")
+st.caption(
+    "Archivo **V.2 2023 Estructura Planes SIL.-LLNEXT.xlsx**, hoja **LISTADO GRAL (2)**. "
+    "Define Temáticas, Bibliotecas, Revistas y Producto Principal por material."
+)
 
-n_clases = len(db.get_clasificaciones())
-if n_clases > 0:
-    st.info(f"Ya hay **{n_clases} materiales** clasificados en la base de datos. "
-            f"Podés editarlos en la página **Clasificaciones**.")
+n_est = len(db.get_estructura())
+if n_est > 0:
+    st.info(f"Ya hay **{n_est} materiales** en la estructura de planes.")
 
-with st.expander("🔄 Cargar clasificaciones desde Excel (reemplaza las existentes)"):
-    st.warning("Esto reemplazará todas las clasificaciones actuales.")
+with st.expander("🔄 Cargar estructura desde Excel (reemplaza la existente)"):
+    st.warning("Esto reemplazará la estructura actual y recalculará todos los períodos.")
+    archivo_est = st.file_uploader(
+        "Seleccioná el Excel de estructura de planes",
+        type=["xlsx"],
+        key="uploader_est",
+    )
+    if st.button("Seed Estructura", disabled=archivo_est is None):
+        with st.spinner("Cargando estructura..."):
+            try:
+                n_est_new = etl.seed_estructura(db.get_conn(), archivo_est.read())
+                st.success(f"✅ {n_est_new} materiales cargados en la estructura.")
+                periodos = db.get_periodos()
+                if periodos:
+                    with st.spinner(f"Recalculando {len(periodos)} período(s)..."):
+                        for p in periodos:
+                            etl.build_resumen(db.get_conn(), p)
+                    st.info(f"Resumen recalculado para {len(periodos)} período(s).")
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+# ── Sección 2b: Seed de Clasificaciones (solo Checkpoint) ─────────────────────
+with st.expander("🔄 Cargar clasificaciones (solo para detección de Checkpoint)"):
+    st.caption("Usado únicamente para identificar materiales de tipo Checkpoint.")
     archivo_cl = st.file_uploader(
-        "Seleccioná el Excel que contiene la hoja 'Clasificaciones'",
+        "Seleccioná el Excel con hoja 'Clasificaciones'",
         type=["xlsx", "xls"],
         key="uploader_cl",
     )
@@ -84,16 +109,13 @@ with st.expander("🔄 Cargar clasificaciones desde Excel (reemplaza las existen
         with st.spinner("Cargando clasificaciones..."):
             try:
                 n_cl = etl.seed_clasificaciones(db.get_conn(), archivo_cl.read())
-                st.success(f"✅ {n_cl} materiales clasificados cargados.")
-
-                # Recalcular todos los períodos existentes
+                st.success(f"✅ {n_cl} materiales cargados.")
                 periodos = db.get_periodos()
                 if periodos:
                     with st.spinner(f"Recalculando {len(periodos)} período(s)..."):
-                        conn = db.get_conn()
                         for p in periodos:
-                            etl.build_resumen(conn, p)
-                    st.info(f"Resumen recalculado para {len(periodos)} período(s).")
+                            etl.build_resumen(db.get_conn(), p)
+                    st.info(f"Recalculado para {len(periodos)} período(s).")
             except Exception as e:
                 st.error(f"Error: {e}")
 

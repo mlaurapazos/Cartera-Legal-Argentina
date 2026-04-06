@@ -66,6 +66,25 @@ def get_clasificaciones() -> pd.DataFrame:
     )
 
 
+def save_estructura(df: pd.DataFrame):
+    client = get_client()
+    client.table("estructura").delete().not_.is_("material", "null").execute()
+    records = _to_records(df)
+    for i in range(0, len(records), 500):
+        client.table("estructura").insert(records[i:i + 500]).execute()
+
+
+def get_estructura() -> pd.DataFrame:
+    try:
+        client = get_client()
+        result = client.table("estructura").select("*").execute()
+        return pd.DataFrame(result.data) if result.data else pd.DataFrame(
+            columns=["material", "descripcion", "formato", "tem_gen", "produc", "lln_sil"]
+        )
+    except Exception:
+        return pd.DataFrame(columns=["material", "descripcion", "formato", "tem_gen", "produc", "lln_sil"])
+
+
 def clasificaciones_vacio() -> bool:
     client = get_client()
     result = client.table("clasificaciones").select("material", count="exact").limit(1).execute()

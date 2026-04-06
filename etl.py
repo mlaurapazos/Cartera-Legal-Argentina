@@ -7,7 +7,12 @@ from io import BytesIO
 
 import db
 
-PRIORIDAD = {"TR Full": 1, "TR Profesional": 2, "TR Practica": 3, "TR Duo": 4}
+# Mapeo PRODUC (nueva estructura) → nombre de producto y prioridad
+PRODUC_PRODUCTO = {
+    "FULL": "TR Full",
+    "PROF": "TR Profesional",
+}
+PRODUC_PRIORIDAD = {"TR Full": 1, "TR Profesional": 2}
 
 
 def load_suscripciones(file_bytes: bytes) -> pd.DataFrame:
@@ -60,7 +65,7 @@ def load_suscripciones(file_bytes: bytes) -> pd.DataFrame:
 
 
 def seed_clasificaciones(conn, file_bytes: bytes):
-    """Siembra la tabla clasificaciones desde la hoja 'Clasificaciones' del Excel."""
+    """Siembra clasificaciones (usado solo para detección de Checkpoint)."""
     cl = pd.read_excel(BytesIO(file_bytes), sheet_name="Clasificaciones")
     cl = cl.rename(columns={
         "Material": "material",
@@ -75,22 +80,28 @@ def seed_clasificaciones(conn, file_bytes: bytes):
     return len(cl)
 
 
-def _producto_principal_suscripto(tipos_principales: pd.Series, n_tematicas: int,
-                                   n_bibliotecas: int, tiene_checkpoint: bool) -> str | None:
-    """Determina el producto principal con prioridad y fallback."""
-    candidatos = [t for t in tipos_principales.dropna() if t in PRIORIDAD]
-    if candidatos:
-        return min(candidatos, key=lambda t: PRIORIDAD[t])
-    # Fallback
-    if n_tematicas > 0 and n_bibliotecas > 0:
-        return "Temáticas / Bibliotecas"
-    if n_tematicas > 0:
-        return "Temáticas"
-    if n_bibliotecas > 0:
-        return "Bibliotecas"
-    if tiene_checkpoint:
-        return "Checkpoint"
-    return None
+def seed_estructura(conn, file_bytes: bytes) -> int:
+    """Siembra la tabla estructura desde la hoja 'LISTADO GRAL (2)' del Excel de planes."""
+    df = pd.read_excel(BytesIO(file_bytes), sheet_name="LISTADO GRAL (2)")
+    df = df[df["MATERIAL"].notna()].copy()
+
+    def _safe_code(x):
+        try:
+            return str(int(float(x)))
+        except (ValueError, TypeError):
+            return None
+
+    df["material"] = df["MATERIAL"].apply(_safe_code)
+    df = df[df["material"].notna()]
+    df["descripcion"] = df["DESCRIPCION"].astype(str).str.strip()
+    df["formato"]     = df["FORMATO"].astype(str).str.strip()
+    df["tem_gen"]     = df["TEM/GEN"].astype(str).str.strip().replace({"nan": None})
+    df["produc"]      = df["PRODUC"].astype(str).str.strip().replace({"nan": None})
+    df["lln_sil"]     = df["LLN/SIL"].astype(str).str.strip().replace({"nan": None})
+
+    df = df[["material", "descripcion", "formato", "tem_gen", "produc", "lln_sil"]].drop_duplicates("material")
+    db.save_estructura(df)
+    return len(df)
 
 
 def load_aging(file_bytes: bytes) -> pd.DataFrame:
@@ -155,49 +166,86 @@ def load_uso(file_bytes: bytes) -> pd.DataFrame:
 
 def build_resumen(conn, periodo: str) -> int:
     """
-    Lee raw_suscripciones + clasificaciones, calcula resumen por cliente,
-    y lo persiste en resumen_mensual para el período dado.
-    Retorna el número de clientes procesados.
+    Lee raw_suscripciones + estructura (nueva) + clasificaciones (Checkpoint),
+    calcula resumen por cliente y lo persiste en resumen_mensual.
     """
-    df = db.get_raw_suscripciones()
-    cl = db.get_clasificaciones()
+    df  = db.get_raw_suscripciones()
+    est = db.get_estructura()
+    cl  = db.get_clasificaciones()
 
-    # Normalizar para join
-    df["mat_norm"] = df["material_desc"].astype(str).str.strip().str.upper()
+    # ── Join suscripciones ← estructura (por código numérico de material) ──────
+    def _safe_code(x):
+        if pd.isna(x):
+            return None
+        try:
+            return str(int(float(x)))
+        except (ValueError, TypeError):
+            return None
+
+    df["mat_code"] = df["material"].apply(_safe_code)
+
+    if not est.empty:
+        est_join = est.rename(columns={"material": "mat_code"})
+        df = df.merge(est_join[["mat_code", "formato", "tem_gen", "produc"]], on="mat_code", how="left")
+    else:
+        df["formato"] = None
+        df["tem_gen"] = None
+        df["produc"]  = None
+
+    # ── Checkpoint desde clasificaciones (join por descripción, igual que antes) ─
     cl["mat_norm"] = cl["material"].astype(str).str.strip().str.upper()
-    cl["es_principal"] = cl["es_principal"].astype(bool)
-    cl["tipo"] = cl["producto_principal"].astype(str).str.strip().replace("nan", None)
+    checkpoint_mats = set(cl[cl["producto_principal"].astype(str) == "Checkpoint"]["mat_norm"])
+    df["mat_desc_norm"] = df["material_desc"].astype(str).str.strip().str.upper()
+    df["es_checkpoint"] = df["mat_desc_norm"].isin(checkpoint_mats)
 
-    df = df.merge(cl[["mat_norm", "tipo", "es_principal"]], on="mat_norm", how="left")
-    df["tipo"] = df["tipo"].where(df["tipo"] != "None", None)
-    df["acv_ars"] = pd.to_numeric(df["acv_ars"], errors="coerce")
+    df["acv_ars"]      = pd.to_numeric(df["acv_ars"],      errors="coerce")
     df["billing_value"] = pd.to_numeric(df["billing_value"], errors="coerce")
 
     def agg_cliente(g):
         account_name = g["account_name"].dropna().iloc[0] if g["account_name"].notna().any() else None
-        prod_sf = g["producto_principal_sf"].dropna().iloc[0] if g["producto_principal_sf"].notna().any() else None
+        prod_sf      = g["producto_principal_sf"].dropna().iloc[0] if g["producto_principal_sf"].notna().any() else None
 
         # Materiales únicos, sin HighQ
-        mat_unicos = g.drop_duplicates("mat_norm")
-        mat_unicos = mat_unicos[~mat_unicos["mat_norm"].str.contains("HIGHQ|HIGH-Q", na=False)]
+        mat_unicos = g.drop_duplicates("mat_code")
+        mat_unicos = mat_unicos[
+            ~mat_unicos["material_desc"].astype(str).str.upper().str.contains("HIGHQ|HIGH-Q", na=False)
+        ]
 
         total_acv     = mat_unicos["acv_ars"].sum()
         total_billing = mat_unicos["billing_value"].sum()
-
-        # Tipo de facturación: Anual si ACV == Billing Value (tolerancia < 1 peso)
         tipo_facturacion = "Anual" if abs(total_acv - total_billing) < 1 else "Mensual"
-        valor_mensual = round(total_acv / 12, 2)
+        valor_mensual    = round(total_acv / 12, 2)
 
-        mat_por_tipo = mat_unicos.groupby("tipo")["mat_norm"].count()
-        n_tematicas   = int(mat_por_tipo.get("Tematica", 0))
-        n_bibliotecas = int(mat_por_tipo.get("Bibliotecas", 0))
-        n_revistas    = int(mat_por_tipo.get("Revista", 0))
-        tiene_checkpoint = bool((g["tipo"] == "Checkpoint").any())
+        # ── Temáticas: FORMATO == "BSUB" Y TEM/GEN == "TEM" ──────────────────
+        n_tematicas = int(((mat_unicos["formato"] == "BSUB") & (mat_unicos["tem_gen"] == "TEM")).sum())
+        # ── Bibliotecas: FORMATO en ["PV", "BIB"] ─────────────────────────────
+        n_bibliotecas = int(mat_unicos["formato"].isin(["PV", "BIB"]).sum())
+        # ── Revistas: FORMATO en ["Online", "Papel"] ──────────────────────────
+        n_revistas = int(mat_unicos["formato"].isin(["Online", "Papel"]).sum())
+        # ── Checkpoint ────────────────────────────────────────────────────────
+        tiene_checkpoint = bool(mat_unicos["es_checkpoint"].any())
 
-        tipos_principales = g.loc[g["es_principal"] == True, "tipo"]
-        prod_suscripto = _producto_principal_suscripto(
-            tipos_principales, n_tematicas, n_bibliotecas, tiene_checkpoint
-        )
+        # ── Producto Principal: BSUB con PRODUC conocido, mayor prioridad ─────
+        bsub_mats = mat_unicos[mat_unicos["formato"] == "BSUB"]
+        prod_suscripto = None
+        candidatos = [
+            (PRODUC_PRIORIDAD[PRODUC_PRODUCTO[p]], PRODUC_PRODUCTO[p])
+            for p in bsub_mats["produc"].dropna()
+            if p in PRODUC_PRODUCTO
+        ]
+        if candidatos:
+            prod_suscripto = min(candidatos, key=lambda x: x[0])[1]
+
+        # Fallback si no hay BSUB con PRODUC conocido
+        if prod_suscripto is None:
+            if n_tematicas > 0 and n_bibliotecas > 0:
+                prod_suscripto = "Temáticas / Bibliotecas"
+            elif n_tematicas > 0:
+                prod_suscripto = "Temáticas"
+            elif n_bibliotecas > 0:
+                prod_suscripto = "Bibliotecas"
+            elif tiene_checkpoint:
+                prod_suscripto = "Checkpoint"
 
         return pd.Series({
             "account_name":                 account_name,
