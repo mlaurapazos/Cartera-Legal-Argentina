@@ -371,8 +371,8 @@ def build_resumen(conn, periodo: str) -> int:
         resumen = resumen.merge(acv_nuevo, on="sold_to_pt", how="left")
         resumen["acv_anual_nuevo"]   = resumen["acv_anual_nuevo"].fillna(0).round(2)
         resumen["acv_mensual_nuevo"] = resumen["acv_mensual_nuevo"].fillna(0).round(2)
-        resumen["acv_dif_anual"]     = (resumen["acv_anual_nuevo"]   - resumen["total_acv_ars"]).round(2)
-        resumen["acv_dif_mensual"]   = (resumen["acv_mensual_nuevo"] - resumen["valor_mensual_ars"]).round(2)
+        resumen["acv_dif_anual"]     = (resumen["total_acv_ars"]    - resumen["acv_anual_nuevo"]).round(2)
+        resumen["acv_dif_mensual"]   = (resumen["valor_mensual_ars"] - resumen["acv_mensual_nuevo"]).round(2)
     else:
         resumen["acv_anual_nuevo"]   = None
         resumen["acv_mensual_nuevo"] = None

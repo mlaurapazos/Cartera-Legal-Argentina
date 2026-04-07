@@ -176,6 +176,17 @@ def color_prod(val):
     color = COLORES_PROD.get(str(val), "#888")
     return f"background-color: {color}; color: white; font-weight: bold; text-align: center"
 
+def color_dif(val):
+    try:
+        v = float(val)
+    except (TypeError, ValueError):
+        return ""
+    if v > 0:
+        return "background-color: #d4edda; color: #155724; font-weight: bold"
+    if v < 0:
+        return "background-color: #f8d7da; color: #721c24; font-weight: bold"
+    return ""
+
 display = df.rename(columns={
     "sold_to_pt":                    "SAP",
     "account_name":                  "Cliente",
@@ -230,9 +241,12 @@ for col_deuda in ["Deuda > 90", "Deuda > 180", "Deuda > 360"]:
     if col_deuda in display.columns:
         fmt[col_deuda] = "$ {:,.0f}"
 
+dif_cols = [c for c in ["ACV Dif. Anual", "ACV Dif. Mensual"] if c in display.columns]
+
 styled = (
     display.style
     .map(color_prod, subset=["Prod. Principal"])
+    .map(color_dif, subset=dif_cols if dif_cols else ["ACV Dif. Anual"])
     .format(fmt, na_rep="—")
 )
 st.dataframe(styled, use_container_width=True, hide_index=True, height=500)
