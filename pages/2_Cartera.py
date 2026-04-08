@@ -266,11 +266,11 @@ COLS_ORDER = [
 ]
 display = display[[c for c in COLS_ORDER if c in display.columns]]
 
-display["Checkpoint"] = display["Checkpoint"].map({1: "✅", 0: "—", True: "✅", False: "—"})
+display["Checkpoint"] = display["Checkpoint"].apply(lambda x: "✅" if x in (1, True) else "—")
 if "Papel" in display.columns:
-    display["Papel"] = display["Papel"].map({1: "✅", 0: "—", True: "✅", False: "—"})
+    display["Papel"] = display["Papel"].apply(lambda x: "✅" if x in (1, True) else "—")
 if "No utiliza el producto" in display.columns:
-    display["No utiliza el producto"] = display["No utiliza el producto"].map({True: "✅", False: "—"})
+    display["No utiliza el producto"] = display["No utiliza el producto"].apply(lambda x: "✅" if x in (1, True) else "—")
 
 fmt = {}
 for col in ["ACV Actual Anual", "ACV Actual Mensual", "ACV Anual Nuevo", "ACV Mensual Nuevo"]:
