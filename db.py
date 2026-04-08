@@ -21,12 +21,15 @@ def get_conn():
 
 
 def _clean(v):
-    """Convierte NaN/inf a None para serialización JSON."""
+    """Convierte NaN/inf a None y floats enteros a int para serialización JSON."""
     if v is None:
         return None
     try:
-        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-            return None
+        if isinstance(v, float):
+            if math.isnan(v) or math.isinf(v):
+                return None
+            if v == int(v):
+                return int(v)
     except Exception:
         pass
     return v
