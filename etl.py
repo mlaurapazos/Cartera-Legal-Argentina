@@ -102,7 +102,16 @@ def seed_estructura(conn, file_bytes: bytes) -> int:
     df["produc"]      = df["PRODUC"].astype(str).str.strip().replace({"nan": None})
     df["lln_sil"]     = df["LLN/SIL"].astype(str).str.strip().replace({"nan": None})
 
-    df = df[["material", "descripcion", "formato", "tem_gen", "produc", "lln_sil"]].drop_duplicates("material")
+    # Columna I (PAPEL/SPAPEL): PAP = con papel, S-P / SPAPEL = sin papel
+    col_papel = "PAPEL/SPAPEL"
+    if col_papel in df.columns:
+        df["papel"] = df[col_papel].astype(str).str.strip().replace({"nan": None})
+    elif df.shape[1] > 8:
+        df["papel"] = df.iloc[:, 8].astype(str).str.strip().replace({"nan": None})
+    else:
+        df["papel"] = None
+
+    df = df[["material", "descripcion", "formato", "tem_gen", "produc", "lln_sil", "papel"]].drop_duplicates("material")
     db.save_estructura(df)
     return len(df)
 
@@ -310,11 +319,13 @@ def build_resumen(conn, periodo: str) -> int:
 
     if not est.empty:
         est_join = est.rename(columns={"material": "mat_code"})
-        df = df.merge(est_join[["mat_code", "formato", "tem_gen", "produc"]], on="mat_code", how="left")
+        cols_est = [c for c in ["mat_code", "formato", "tem_gen", "produc", "papel"] if c in est_join.columns]
+        df = df.merge(est_join[cols_est], on="mat_code", how="left")
     else:
         df["formato"] = None
         df["tem_gen"] = None
         df["produc"]  = None
+        df["papel"]   = None
 
     # ── Checkpoint desde clasificaciones (join por descripción, igual que antes) ─
     cl["mat_norm"] = cl["material"].astype(str).str.strip().str.upper()
@@ -353,6 +364,8 @@ def build_resumen(conn, periodo: str) -> int:
         n_revistas = int(mat_unicos["formato"].isin(["Online", "Papel"]).sum())
         # ── Checkpoint ────────────────────────────────────────────────────────
         tiene_checkpoint = bool(mat_unicos["es_checkpoint"].any())
+        # ── Papel: algún material tiene PAPEL/SPAPEL == "PAP" ─────────────────
+        tiene_papel = bool("papel" in mat_unicos.columns and (mat_unicos["papel"] == "PAP").any())
 
         # ── Producto Principal: BSUB con PRODUC conocido, mayor prioridad ─────
         bsub_mats = mat_unicos[mat_unicos["formato"] == "BSUB"]
@@ -386,6 +399,7 @@ def build_resumen(conn, periodo: str) -> int:
             "cant_bibliotecas":             n_bibliotecas,
             "cant_revistas":                n_revistas,
             "tiene_checkpoint":             int(tiene_checkpoint),
+            "tiene_papel":                  int(tiene_papel),
             "producto_principal_suscripto": prod_suscripto,
             "tipo_facturacion":             tipo_facturacion,
         })

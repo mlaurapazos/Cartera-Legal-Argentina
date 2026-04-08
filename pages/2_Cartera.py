@@ -101,6 +101,32 @@ with col_r2:
     st.markdown("<br>", unsafe_allow_html=True)
     st.caption(f"$ {rango_mens[0]:,.0f} — $ {rango_mens[1]:,.0f}")
 
+# Filtro por diferencia ACV anual
+tiene_dif_col = "acv_dif_anual" in df.columns and df["acv_dif_anual"].notna().any()
+if tiene_dif_col:
+    col_d1, col_d2 = st.columns([3, 1])
+    with col_d1:
+        dif_vals = df["acv_dif_anual"].fillna(0)
+        min_dif = float(dif_vals.min())
+        max_dif = float(dif_vals.max())
+        if max_dif > min_dif:
+            rango_dif = st.slider(
+                "Diferencia ACV Anual (ARS)",
+                min_value=min_dif,
+                max_value=max_dif,
+                value=(min_dif, max_dif),
+                format="$ %,.0f",
+                step=max(1.0, round((max_dif - min_dif) / 1000, 0)),
+            )
+        else:
+            rango_dif = (min_dif, max_dif)
+            st.caption(f"Diferencia ACV: $ {min_dif:,.0f}")
+    with col_d2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.caption(f"$ {rango_dif[0]:,.0f} — $ {rango_dif[1]:,.0f}")
+else:
+    rango_dif = None
+
 # Aplicar filtros
 if sel_sf:
     df = df[df["producto_principal_sf"].isin(sel_sf)]
@@ -123,6 +149,8 @@ elif tiene_dif and filtro_dif == "🔴 Pagan menos (baja)":
 if busqueda:
     df = df[df["account_name"].astype(str).str.upper().str.contains(busqueda.upper(), na=False)]
 df = df[(df["valor_mensual_ars"] >= rango_mens[0]) & (df["valor_mensual_ars"] <= rango_mens[1])]
+if rango_dif is not None and tiene_dif_col:
+    df = df[(df["acv_dif_anual"] >= rango_dif[0]) & (df["acv_dif_anual"] <= rango_dif[1])]
 
 # ── KPI cards ─────────────────────────────────────────────────────────────────
 acv_total   = df["total_acv_ars"].sum()
@@ -217,6 +245,7 @@ display = df.rename(columns={
     "cant_bibliotecas":              "Bibliotecas",
     "cant_revistas":                 "Revistas",
     "tiene_checkpoint":              "Checkpoint",
+    "tiene_papel":                   "Papel",
     "producto_principal_suscripto":  "Prod. Principal",
     "uso_sil":                       "Uso SIL",
     "uso_lln":                       "Uso LLN",
@@ -231,13 +260,15 @@ COLS_ORDER = [
     "SAP", "Cliente", "Prod. SF", "Prod. Principal",
     "ACV Actual Anual", "ACV Actual Mensual",
     "ACV Anual Nuevo", "ACV Mensual Nuevo", "ACV Dif. Anual", "ACV Dif. Mensual",
-    "Facturación", "Usuarios", "Temáticas", "Bibliotecas", "Revistas", "Checkpoint",
+    "Facturación", "Usuarios", "Papel", "Temáticas", "Bibliotecas", "Revistas", "Checkpoint",
     "Uso SIL", "Uso LLN", "No utiliza el producto",
     "Deuda > 90", "Deuda > 180", "Deuda > 360",
 ]
 display = display[[c for c in COLS_ORDER if c in display.columns]]
 
 display["Checkpoint"] = display["Checkpoint"].map({1: "✅", 0: "—", True: "✅", False: "—"})
+if "Papel" in display.columns:
+    display["Papel"] = display["Papel"].map({1: "✅", 0: "—", True: "✅", False: "—"})
 if "No utiliza el producto" in display.columns:
     display["No utiliza el producto"] = display["No utiliza el producto"].map({True: "✅", False: "—"})
 
