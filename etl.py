@@ -208,7 +208,8 @@ def _calc_acv_nuevo(
 
     results = []
     for sold_to_pt, g in df.groupby("sold_to_pt"):
-        usuarios = int(cant_usuarios_map.get(sold_to_pt) or 1)
+        cu = cant_usuarios_map.get(sold_to_pt)
+        usuarios = int(cu) if pd.notna(cu) else 1
         materiales = set(g["mat_code"].dropna().unique())
 
         nuevos: set[str] = set()
