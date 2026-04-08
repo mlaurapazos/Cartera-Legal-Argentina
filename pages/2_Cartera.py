@@ -212,6 +212,7 @@ display = df.rename(columns={
     "acv_dif_anual":                 "ACV Dif. Anual",
     "acv_dif_mensual":               "ACV Dif. Mensual",
     "tipo_facturacion":              "Facturación",
+    "cant_usuarios":                 "Usuarios",
     "cant_tematicas":                "Temáticas",
     "cant_bibliotecas":              "Bibliotecas",
     "cant_revistas":                 "Revistas",
@@ -230,7 +231,7 @@ COLS_ORDER = [
     "SAP", "Cliente", "Prod. SF", "Prod. Principal",
     "ACV Actual Anual", "ACV Actual Mensual",
     "ACV Anual Nuevo", "ACV Mensual Nuevo", "ACV Dif. Anual", "ACV Dif. Mensual",
-    "Facturación", "Temáticas", "Bibliotecas", "Revistas", "Checkpoint",
+    "Facturación", "Usuarios", "Temáticas", "Bibliotecas", "Revistas", "Checkpoint",
     "Uso SIL", "Uso LLN", "No utiliza el producto",
     "Deuda > 90", "Deuda > 180", "Deuda > 360",
 ]

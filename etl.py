@@ -316,6 +316,11 @@ def build_resumen(conn, periodo: str) -> int:
         tipo_facturacion = "Anual" if abs(total_acv - total_billing) < 1 else "Mensual"
         valor_mensual    = round(total_acv / 12, 2)
 
+        # ── Cantidad de usuarios: mínimo de materiales BSUB ──────────────────
+        bsub_usuarios = mat_unicos.loc[mat_unicos["formato"] == "BSUB", "cant_usuarios"]
+        bsub_usuarios = pd.to_numeric(bsub_usuarios, errors="coerce").dropna()
+        cant_usuarios = int(bsub_usuarios.min()) if not bsub_usuarios.empty else None
+
         # ── Temáticas: FORMATO == "BSUB" Y TEM/GEN == "TEM" ──────────────────
         n_tematicas = int(((mat_unicos["formato"] == "BSUB") & (mat_unicos["tem_gen"] == "TEM")).sum())
         # ── Bibliotecas: FORMATO en ["PV", "BIB"] ─────────────────────────────
@@ -352,6 +357,7 @@ def build_resumen(conn, periodo: str) -> int:
             "producto_principal_sf":        prod_sf,
             "total_acv_ars":                round(total_acv, 2),
             "valor_mensual_ars":            valor_mensual,
+            "cant_usuarios":                cant_usuarios,
             "cant_tematicas":               n_tematicas,
             "cant_bibliotecas":             n_bibliotecas,
             "cant_revistas":                n_revistas,
