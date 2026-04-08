@@ -90,8 +90,10 @@ def seed_estructura(conn, file_bytes: bytes) -> int:
 
     def _safe_code(x):
         try:
+            if pd.isna(x):
+                return None
             return str(int(float(x)))
-        except (ValueError, TypeError):
+        except Exception:
             return None
 
     df["material"] = df["MATERIAL"].apply(_safe_code)
@@ -123,7 +125,7 @@ def seed_equiv_wl(conn, file_bytes: bytes) -> tuple:
             return None
         try:
             return str(int(float(x)))
-        except (ValueError, TypeError):
+        except Exception:
             return None
 
     # Equivalencias (filas 0-1 son títulos, datos desde fila 2)
@@ -312,7 +314,7 @@ def build_resumen(conn, periodo: str) -> int:
             return None
         try:
             return str(int(float(x)))
-        except (ValueError, TypeError):
+        except Exception:
             return None
 
     df["mat_code"] = df["material"].apply(_safe_code)
