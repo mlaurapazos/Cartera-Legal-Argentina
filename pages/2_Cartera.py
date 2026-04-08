@@ -54,7 +54,7 @@ with col_f3:
 with col_f4:
     busqueda = st.text_input("Buscar cliente", placeholder="Nombre...")
 
-col_f5, col_f6 = st.columns([2, 3])
+col_f5, col_f6, col_f7 = st.columns([2, 3, 3])
 with col_f5:
     sel_facturacion = st.multiselect(
         "Tipo de facturación", ["Anual", "Mensual"], default=[]
@@ -68,6 +68,16 @@ with col_f6:
         )
     else:
         filtro_deuda = "Todos"
+with col_f7:
+    tiene_dif = "acv_dif_anual" in df.columns
+    if tiene_dif:
+        filtro_dif = st.radio(
+            "Diferencia ACV",
+            ["Todos", "🟢 Pagan más (sube)", "🔴 Pagan menos (baja)"],
+            horizontal=True,
+        )
+    else:
+        filtro_dif = "Todos"
 
 # Filtro por importe mensual
 col_r1, col_r2 = st.columns([3, 1])
@@ -106,6 +116,10 @@ if tiene_aging and filtro_deuda == "Con deuda":
     df = df[df["deuda_90"] > 0]
 elif tiene_aging and filtro_deuda == "Sin deuda":
     df = df[df["deuda_90"] <= 0]
+if tiene_dif and filtro_dif == "🟢 Pagan más (sube)":
+    df = df[df["acv_dif_anual"] > 0]
+elif tiene_dif and filtro_dif == "🔴 Pagan menos (baja)":
+    df = df[df["acv_dif_anual"] < 0]
 if busqueda:
     df = df[df["account_name"].astype(str).str.upper().str.contains(busqueda.upper(), na=False)]
 df = df[(df["valor_mensual_ars"] >= rango_mens[0]) & (df["valor_mensual_ars"] <= rango_mens[1])]
@@ -182,9 +196,9 @@ def color_dif(val):
     except (TypeError, ValueError):
         return ""
     if v > 0:
-        return "background-color: #f8d7da; color: #721c24; font-weight: bold"
-    if v < 0:
         return "background-color: #d4edda; color: #155724; font-weight: bold"
+    if v < 0:
+        return "background-color: #f8d7da; color: #721c24; font-weight: bold"
     return ""
 
 display = df.rename(columns={
