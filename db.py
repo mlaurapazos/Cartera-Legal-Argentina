@@ -82,10 +82,10 @@ def get_estructura() -> pd.DataFrame:
         client = get_client()
         result = client.table("estructura").select("*").execute()
         return pd.DataFrame(result.data) if result.data else pd.DataFrame(
-            columns=["material", "descripcion", "formato", "tem_gen", "produc", "lln_sil"]
+            columns=["material", "descripcion", "formato", "tem_gen", "produc", "lln_sil", "papel"]
         )
     except Exception:
-        return pd.DataFrame(columns=["material", "descripcion", "formato", "tem_gen", "produc", "lln_sil"])
+        return pd.DataFrame(columns=["material", "descripcion", "formato", "tem_gen", "produc", "lln_sil", "papel"])
 
 
 def clasificaciones_vacio() -> bool:
