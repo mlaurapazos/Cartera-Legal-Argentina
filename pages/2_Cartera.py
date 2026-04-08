@@ -248,6 +248,8 @@ for col in ["ACV Actual Anual", "ACV Actual Mensual", "ACV Anual Nuevo", "ACV Me
 for col in ["ACV Dif. Anual", "ACV Dif. Mensual"]:
     if col in display.columns:
         fmt[col] = "$ {:+,.0f}"
+if "Usuarios" in display.columns:
+    fmt["Usuarios"] = "{:,.0f}"
 if "Uso SIL" in display.columns:
     fmt["Uso SIL"] = "{:,}"
 if "Uso LLN" in display.columns:
