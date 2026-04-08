@@ -316,10 +316,10 @@ def build_resumen(conn, periodo: str) -> int:
         tipo_facturacion = "Anual" if abs(total_acv - total_billing) < 1 else "Mensual"
         valor_mensual    = round(total_acv / 12, 2)
 
-        # ── Cantidad de usuarios: mínimo de materiales BSUB ──────────────────
-        bsub_usuarios = mat_unicos.loc[mat_unicos["formato"] == "BSUB", "cant_usuarios"]
-        bsub_usuarios = pd.to_numeric(bsub_usuarios, errors="coerce").dropna()
-        cant_usuarios = int(bsub_usuarios.min()) if not bsub_usuarios.empty else None
+        # ── Cantidad de usuarios: mínimo entre todos los materiales con valor ─
+        todos_usuarios = pd.to_numeric(g["cant_usuarios"], errors="coerce").dropna()
+        todos_usuarios = todos_usuarios[todos_usuarios > 0]
+        cant_usuarios = int(todos_usuarios.min()) if not todos_usuarios.empty else None
 
         # ── Temáticas: FORMATO == "BSUB" Y TEM/GEN == "TEM" ──────────────────
         n_tematicas = int(((mat_unicos["formato"] == "BSUB") & (mat_unicos["tem_gen"] == "TEM")).sum())
