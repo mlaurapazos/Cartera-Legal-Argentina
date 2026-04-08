@@ -129,36 +129,60 @@ def seed_equiv_wl(conn, file_bytes: bytes) -> tuple:
     eq_clean = eq_clean[eq_clean["mat_actual"].notna()].drop_duplicates("mat_actual")
     db.save_equiv_wl(eq_clean)
 
-    # Precios (fila 0 es header, datos desde fila 1)
+    # Precios: cols → 0=Usuarios, 1=Material, 2=Description, 3=ACV Anual, 4=ACV Mensual
     pr = pd.read_excel(BytesIO(file_bytes), sheet_name="Precios", header=None)
     pr = pr.iloc[1:].copy()
     pr_clean = pd.DataFrame({
-        "material":    pr.iloc[:, 0].apply(_safe_code),
-        "acv_anual":   pd.to_numeric(pr.iloc[:, 2], errors="coerce"),
-        "acv_mensual": pd.to_numeric(pr.iloc[:, 3], errors="coerce"),
+        "usuarios":    pd.to_numeric(pr.iloc[:, 0], errors="coerce"),
+        "material":    pr.iloc[:, 1].apply(_safe_code),
+        "acv_anual":   pd.to_numeric(pr.iloc[:, 3], errors="coerce"),
+        "acv_mensual": pd.to_numeric(pr.iloc[:, 4], errors="coerce"),
     })
-    pr_clean = pr_clean[pr_clean["material"].notna()].drop_duplicates("material")
+    pr_clean = pr_clean[pr_clean["material"].notna() & pr_clean["usuarios"].notna()].copy()
+    pr_clean["usuarios"] = pr_clean["usuarios"].astype(int)
     db.save_precios_wl(pr_clean)
 
     return len(eq_clean), len(pr_clean)
 
 
-def _calc_acv_nuevo(df: pd.DataFrame, equiv: pd.DataFrame, precios: pd.DataFrame) -> pd.DataFrame:
+def _calc_acv_nuevo(
+    df: pd.DataFrame,
+    equiv: pd.DataFrame,
+    precios: pd.DataFrame,
+    cant_usuarios_map: dict,
+) -> pd.DataFrame:
     """
     Calcula ACV nuevo por cliente aplicando equivalencias WL.
+    Usa cant_usuarios del cliente para buscar el precio correspondiente (máx 30).
     Reglas:
     - Cada material nuevo se suma UNA SOLA VEZ por cliente.
-    - Los 3 materiales WL exclusivos (ADVANCED ONLINE, +PAPEL, CORE) son excluyentes:
-      si un cliente tiene varios, se queda solo con el de mayor valor.
+    - Los 3 materiales WL exclusivos son excluyentes: se conserva el de mayor valor.
     """
-    precios_dict = {
-        str(row["material"]): {
-            "acv_anual":   float(row["acv_anual"]   or 0),
-            "acv_mensual": float(row["acv_mensual"] or 0),
-        }
-        for _, row in precios.iterrows()
-        if pd.notna(row["material"])
-    }
+    MAX_USUARIOS = 30
+
+    # precios_dict: {material: {usuarios: {acv_anual, acv_mensual}}}
+    precios_dict: dict = {}
+    for _, row in precios.iterrows():
+        if pd.notna(row["material"]) and pd.notna(row.get("usuarios")):
+            mat = str(row["material"])
+            u = int(row["usuarios"])
+            if mat not in precios_dict:
+                precios_dict[mat] = {}
+            precios_dict[mat][u] = {
+                "acv_anual":   float(row["acv_anual"]   or 0),
+                "acv_mensual": float(row["acv_mensual"] or 0),
+            }
+
+    def get_price(mat: str, usuarios: int) -> dict:
+        u = min(max(usuarios, 1), MAX_USUARIOS)
+        mat_prices = precios_dict.get(mat, {})
+        if u in mat_prices:
+            return mat_prices[u]
+        # Fallback al mayor nivel disponible <= u, luego al 1
+        menores = [k for k in mat_prices if k <= u]
+        if menores:
+            return mat_prices[max(menores)]
+        return mat_prices.get(1, {"acv_anual": 0, "acv_mensual": 0})
 
     equiv_lookup: dict[str, list[str]] = {}
     for _, row in equiv.iterrows():
@@ -173,25 +197,25 @@ def _calc_acv_nuevo(df: pd.DataFrame, equiv: pd.DataFrame, precios: pd.DataFrame
 
     results = []
     for sold_to_pt, g in df.groupby("sold_to_pt"):
+        usuarios = int(cant_usuarios_map.get(sold_to_pt) or 1)
         materiales = set(g["mat_code"].dropna().unique())
 
-        # Recopilar todos los materiales nuevos únicos
         nuevos: set[str] = set()
         for mat in materiales:
             for nuevo in equiv_lookup.get(mat, []):
                 nuevos.add(nuevo)
 
-        # Exclusión Westlaw: conservar solo el de mayor valor
+        # Exclusión Westlaw: conservar solo el de mayor valor según usuarios del cliente
         wl_candidatos = nuevos & WL_EXCLUSIVOS
         if len(wl_candidatos) > 1:
             mejor_wl = max(
                 wl_candidatos,
-                key=lambda m: precios_dict.get(m, {}).get("acv_anual", 0),
+                key=lambda m: get_price(m, usuarios).get("acv_anual", 0),
             )
             nuevos = (nuevos - WL_EXCLUSIVOS) | {mejor_wl}
 
-        acv_anual   = sum(precios_dict.get(m, {}).get("acv_anual",   0) for m in nuevos)
-        acv_mensual = sum(precios_dict.get(m, {}).get("acv_mensual", 0) for m in nuevos)
+        acv_anual   = sum(get_price(m, usuarios).get("acv_anual",   0) for m in nuevos)
+        acv_mensual = sum(get_price(m, usuarios).get("acv_mensual", 0) for m in nuevos)
 
         results.append({
             "sold_to_pt":        sold_to_pt,
@@ -373,7 +397,8 @@ def build_resumen(conn, periodo: str) -> int:
     equiv   = db.get_equiv_wl()
     precios = db.get_precios_wl()
     if not equiv.empty and not precios.empty:
-        acv_nuevo = _calc_acv_nuevo(df, equiv, precios)
+        cant_usuarios_map = resumen.set_index("sold_to_pt")["cant_usuarios"].to_dict()
+        acv_nuevo = _calc_acv_nuevo(df, equiv, precios, cant_usuarios_map)
         resumen = resumen.merge(acv_nuevo, on="sold_to_pt", how="left")
         resumen["acv_anual_nuevo"]   = resumen["acv_anual_nuevo"].fillna(0).round(2)
         resumen["acv_mensual_nuevo"] = resumen["acv_mensual_nuevo"].fillna(0).round(2)
