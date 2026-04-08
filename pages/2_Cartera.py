@@ -196,9 +196,9 @@ def color_dif(val):
     except (TypeError, ValueError):
         return ""
     if v > 0:
-        return "background-color: #d4edda; color: #155724; font-weight: bold"
-    if v < 0:
         return "background-color: #f8d7da; color: #721c24; font-weight: bold"
+    if v < 0:
+        return "background-color: #d4edda; color: #155724; font-weight: bold"
     return ""
 
 display = df.rename(columns={
