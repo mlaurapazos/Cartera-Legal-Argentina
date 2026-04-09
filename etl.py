@@ -343,10 +343,13 @@ def build_resumen(conn, periodo: str) -> int:
         account_name = g["account_name"].dropna().iloc[0] if g["account_name"].notna().any() else None
         prod_sf      = g["producto_principal_sf"].dropna().iloc[0] if g["producto_principal_sf"].notna().any() else None
 
-        # Materiales únicos, sin HighQ
+        # Materiales únicos, sin HighQ ni Tax Professional
         mat_unicos = g.drop_duplicates("mat_code")
         mat_unicos = mat_unicos[
             ~mat_unicos["material_desc"].astype(str).str.upper().str.contains("HIGHQ|HIGH-Q", na=False)
+        ]
+        mat_unicos = mat_unicos[
+            mat_unicos["bu2"].astype(str).str.strip() != "Tax Professional"
         ]
 
         total_acv     = mat_unicos["acv_ars"].sum()
