@@ -79,6 +79,18 @@ with col_f7:
     else:
         filtro_dif = "Todos"
 
+col_f8, = st.columns([1])
+with col_f8:
+    tiene_papel_col = "tiene_papel" in df.columns
+    if tiene_papel_col:
+        filtro_papel = st.radio(
+            "Papel",
+            ["Todos", "Con papel", "Sin papel"],
+            horizontal=True,
+        )
+    else:
+        filtro_papel = "Todos"
+
 # Filtro por importe mensual
 col_r1, col_r2 = st.columns([3, 1])
 with col_r1:
@@ -146,6 +158,10 @@ if tiene_dif and filtro_dif == "🟢 Pagan más (sube)":
     df = df[df["acv_dif_anual"] > 0]
 elif tiene_dif and filtro_dif == "🔴 Pagan menos (baja)":
     df = df[df["acv_dif_anual"] < 0]
+if tiene_papel_col and filtro_papel == "Con papel":
+    df = df[df["tiene_papel"] == 1]
+elif tiene_papel_col and filtro_papel == "Sin papel":
+    df = df[df["tiene_papel"] != 1]
 if busqueda:
     df = df[df["account_name"].astype(str).str.upper().str.contains(busqueda.upper(), na=False)]
 df = df[(df["valor_mensual_ars"] >= rango_mens[0]) & (df["valor_mensual_ars"] <= rango_mens[1])]
