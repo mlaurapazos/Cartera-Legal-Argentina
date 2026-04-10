@@ -305,7 +305,7 @@ def build_resumen(conn, periodo: str) -> int:
     Lee raw_suscripciones + estructura (nueva) + clasificaciones (Checkpoint),
     calcula resumen por cliente y lo persiste en resumen_mensual.
     """
-    df  = db.get_raw_suscripciones()
+    df  = db.get_raw_suscripciones(periodo)
     est = db.get_estructura()
     cl  = db.get_clasificaciones()
 

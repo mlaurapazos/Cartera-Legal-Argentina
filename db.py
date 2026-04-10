@@ -45,9 +45,11 @@ def init_db():
     pass
 
 
-def replace_raw(df: pd.DataFrame):
+def replace_raw_periodo(df: pd.DataFrame, periodo: str):
     client = get_client()
-    client.table("raw_suscripciones").delete().not_.is_("sold_to_pt", "null").execute()
+    client.table("raw_suscripciones").delete().eq("periodo", periodo).execute()
+    df = df.copy()
+    df["periodo"] = periodo
     records = _to_records(df)
     for i in range(0, len(records), 500):
         client.table("raw_suscripciones").insert(records[i:i + 500]).execute()
@@ -94,16 +96,16 @@ def clasificaciones_vacio() -> bool:
     return (result.count or 0) == 0
 
 
-def get_raw_suscripciones() -> pd.DataFrame:
+def get_raw_suscripciones(periodo: str = None) -> pd.DataFrame:
     client = get_client()
     all_data = []
     page_size = 1000
     offset = 0
     while True:
-        result = (client.table("raw_suscripciones")
-                  .select("*")
-                  .range(offset, offset + page_size - 1)
-                  .execute())
+        q = client.table("raw_suscripciones").select("*")
+        if periodo:
+            q = q.eq("periodo", periodo)
+        result = q.range(offset, offset + page_size - 1).execute()
         all_data.extend(result.data)
         if len(result.data) < page_size:
             break

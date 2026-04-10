@@ -54,7 +54,7 @@ if procesar and archivo and periodo:
         try:
             file_bytes = archivo.read()
             df_raw = etl.load_suscripciones(file_bytes)
-            db.replace_raw(df_raw)
+            db.replace_raw_periodo(df_raw, periodo)
 
             n = etl.build_resumen(db.get_conn(), periodo)
             db.log_upload("suscripciones", periodo, n)
