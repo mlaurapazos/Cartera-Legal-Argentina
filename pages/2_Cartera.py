@@ -152,57 +152,9 @@ df = df[(df["valor_mensual_ars"] >= rango_mens[0]) & (df["valor_mensual_ars"] <=
 if rango_dif is not None and tiene_dif_col:
     df = df[(df["acv_dif_anual"] >= rango_dif[0]) & (df["acv_dif_anual"] <= rango_dif[1])]
 
-# ── KPI cards ─────────────────────────────────────────────────────────────────
-acv_total   = df["total_acv_ars"].sum()
-mens_total  = df["valor_mensual_ars"].sum()
-avg_cliente = df["total_acv_ars"].mean() if len(df) else 0
-
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Clientes", f"{len(df):,}")
-k2.metric("ACV Total (ARS)", f"$ {acv_total:,.0f}")
-k3.metric("Facturación mensual (ARS)", f"$ {mens_total:,.0f}")
-k4.metric("ACV promedio por cliente", f"$ {avg_cliente:,.0f}")
-
-if tiene_aging:
-    d1, d2, d3 = st.columns(3)
-    n_d90  = int((df["deuda_90"]  > 0).sum())
-    n_d180 = int((df["deuda_180"] > 0).sum())
-    n_d360 = int((df["deuda_360"] > 0).sum())
-    d1.metric("Clientes Deuda > 90d",  f"{n_d90:,}",  f"{n_d90/len(df)*100:.0f}%"  if len(df) else "—")
-    d2.metric("Clientes Deuda > 180d", f"{n_d180:,}", f"{n_d180/len(df)*100:.0f}%" if len(df) else "—")
-    d3.metric("Clientes Deuda > 360d", f"{n_d360:,}", f"{n_d360/len(df)*100:.0f}%" if len(df) else "—")
-
-if "uso_sil" in df.columns or "uso_lln" in df.columns:
-    u1, u2, u3 = st.columns(3)
-    if "uso_sil" in df.columns:
-        n_sil = int((df["uso_sil"] > 0).sum())
-        u1.metric("Clientes con uso SIL", f"{n_sil:,}", f"{n_sil/len(df)*100:.0f}%" if len(df) else "—")
-    if "uso_lln" in df.columns:
-        n_lln = int((df["uso_lln"] > 0).sum())
-        u2.metric("Clientes con uso LLN", f"{n_lln:,}", f"{n_lln/len(df)*100:.0f}%" if len(df) else "—")
-    if "uso_sil" in df.columns:
-        u3.metric("Total eventos SIL", f"{int(df['uso_sil'].sum()):,}")
-
-# ── Gráfico distribución ──────────────────────────────────────────────────────
-st.subheader("Distribución por Producto Principal Suscripto")
-dist = (
-    df.groupby("producto_principal_suscripto")
-    .agg(clientes=("sold_to_pt", "count"), acv=("total_acv_ars", "sum"))
-    .reset_index()
-    .sort_values("acv", ascending=False)
-)
-col_chart1, col_chart2 = st.columns(2)
-with col_chart1:
-    st.bar_chart(dist.set_index("producto_principal_suscripto")["clientes"], height=280)
-    st.caption("Cantidad de clientes")
-with col_chart2:
-    st.bar_chart(dist.set_index("producto_principal_suscripto")["acv"], height=280)
-    st.caption("ACV total (ARS)")
-
 # ── Tabla de clientes ─────────────────────────────────────────────────────────
 st.subheader(f"Detalle de clientes — {len(df):,} registros")
 
-# Colores por producto principal suscripto
 COLORES_PROD = {
     "TR Full":                "#1a3a5c",
     "TR Profesional":         "#2d7d46",
@@ -255,7 +207,6 @@ display = df.rename(columns={
     "deuda_360":                     "Deuda > 360",
 }).copy()
 
-# Orden explícito de columnas
 COLS_ORDER = [
     "SAP", "Cliente", "Prod. SF", "Prod. Principal",
     "ACV Actual Anual", "ACV Actual Mensual",
@@ -297,7 +248,7 @@ styled = (
     .map(color_dif, subset=dif_cols if dif_cols else ["ACV Dif. Anual"])
     .format(fmt, na_rep="—")
 )
-st.dataframe(styled, use_container_width=True, hide_index=True, height=500)
+st.dataframe(styled, use_container_width=True, hide_index=True, height=600)
 
 # ── Descarga ──────────────────────────────────────────────────────────────────
 buf = io.BytesIO()
