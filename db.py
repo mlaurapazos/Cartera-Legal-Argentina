@@ -160,12 +160,15 @@ def get_resumen(periodo: str = None) -> pd.DataFrame:
 
 def get_periodos() -> list:
     client = get_client()
-    result = (client.table("resumen_mensual")
-              .select("periodo")
-              .order("periodo", desc=True)
-              .execute())
+    all_data = _fetch_all(
+        lambda s, e: client.table("resumen_mensual")
+        .select("periodo")
+        .order("periodo", desc=True)
+        .range(s, e)
+        .execute()
+    )
     seen, periodos = set(), []
-    for r in (result.data or []):
+    for r in all_data:
         p = r["periodo"]
         if p not in seen:
             seen.add(p)
