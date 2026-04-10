@@ -319,21 +319,6 @@ def load_uso(file_bytes: bytes) -> pd.DataFrame:
     uso_sil, sil_col = _read_uso_sheet(file_bytes, "USO SIL", _SIL_CANDIDATES)
     uso_lln, lln_col = _read_uso_sheet(file_bytes, "USO LLN", _LLN_CANDIDATES)
 
-    sil_col = _find_col(uso_sil, [
-        "m-user-sap_customer_number",
-        "SAP Customer Number",
-        "sap_customer_number",
-        "SAP ID",
-        "Customer Number",
-    ])
-    lln_col = _find_col(uso_lln, [
-        "SAP ID",
-        "m-user-sap_customer_number",
-        "SAP Customer Number",
-        "sap_customer_number",
-        "Customer Number",
-    ])
-
     sil_counts = uso_sil[sil_col].dropna().astype(str).str.strip().value_counts()
     lln_counts = uso_lln[lln_col].dropna().astype(str).str.strip().value_counts()
 
