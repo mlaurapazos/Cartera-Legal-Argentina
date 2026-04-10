@@ -349,7 +349,7 @@ def build_resumen(conn, periodo: str) -> int:
             ~mat_unicos["material_desc"].astype(str).str.upper().str.contains("HIGHQ|HIGH-Q", na=False)
         ]
         mat_unicos = mat_unicos[
-            mat_unicos["bu2"].astype(str).str.strip() != "Tax Professional"
+            ~mat_unicos["bu2"].astype(str).str.strip().isin(["Tax Professional", "Global Print"])
         ]
 
         total_acv     = mat_unicos["acv_ars"].sum()
