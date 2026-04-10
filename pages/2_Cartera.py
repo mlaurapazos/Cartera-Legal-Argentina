@@ -48,7 +48,11 @@ with col_f2:
     sel_sus = st.multiselect("Producto Principal Suscripto", prods_sus, default=[])
 
 with col_f3:
-    solo_ck = st.checkbox("Solo Checkpoint")
+    filtro_ck = st.radio(
+        "Checkpoint",
+        ["Todos", "Con Checkpoint", "Sin Checkpoint"],
+        horizontal=False,
+    )
     solo_sin_uso = st.checkbox("Solo sin uso", disabled=not tiene_uso)
 
 with col_f4:
@@ -144,8 +148,10 @@ if sel_sf:
     df = df[df["producto_principal_sf"].isin(sel_sf)]
 if sel_sus:
     df = df[df["producto_principal_suscripto"].isin(sel_sus)]
-if solo_ck:
+if filtro_ck == "Con Checkpoint":
     df = df[df["tiene_checkpoint"] == 1]
+elif filtro_ck == "Sin Checkpoint":
+    df = df[df["tiene_checkpoint"] != 1]
 if solo_sin_uso and tiene_uso:
     df = df[df["no_uso"] == True]
 if sel_facturacion:
