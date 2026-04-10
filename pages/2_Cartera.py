@@ -27,10 +27,31 @@ if not periodos:
 periodo = st.selectbox("Período", periodos, index=0)
 df = db.get_resumen(periodo)
 
-# Columna derivada: no utiliza el producto (uso SIL + uso LLN == 0)
+# Columna derivada: no utiliza el producto en el período actual NI en el anterior
 tiene_uso = "uso_sil" in df.columns and "uso_lln" in df.columns
 if tiene_uso:
-    df["no_uso"] = ((df["uso_sil"].fillna(0) + df["uso_lln"].fillna(0)) == 0)
+    sin_uso_actual = (df["uso_sil"].fillna(0) + df["uso_lln"].fillna(0)) == 0
+
+    # Calcular período anterior (YYYY-MM → restar 1 mes)
+    try:
+        año, mes = int(periodo[:4]), int(periodo[5:7])
+        mes -= 1
+        if mes == 0:
+            mes, año = 12, año - 1
+        periodo_ant = f"{año}-{mes:02d}"
+    except Exception:
+        periodo_ant = None
+
+    uso_ant = db.get_uso(periodo_ant) if periodo_ant and periodo_ant in periodos else pd.DataFrame()
+    if not uso_ant.empty:
+        uso_ant["sin_uso_ant"] = (uso_ant["uso_sil"].fillna(0) + uso_ant["uso_lln"].fillna(0)) == 0
+        uso_ant = uso_ant[["sold_to_pt", "sin_uso_ant"]]
+        df = df.merge(uso_ant, on="sold_to_pt", how="left")
+        df["sin_uso_ant"] = df["sin_uso_ant"].fillna(True)  # si no hay dato previo, no usó
+        df["no_uso"] = sin_uso_actual & df["sin_uso_ant"]
+        df = df.drop(columns=["sin_uso_ant"])
+    else:
+        df["no_uso"] = sin_uso_actual
 
 # Columnas de deuda
 tiene_aging = "deuda_90" in df.columns
