@@ -53,7 +53,12 @@ with col_f3:
         ["Todos", "Con Checkpoint", "Sin Checkpoint"],
         horizontal=False,
     )
-    solo_sin_uso = st.checkbox("Solo sin uso", disabled=not tiene_uso)
+    filtro_uso = st.radio(
+        "Uso",
+        ["Todos", "Con uso", "Sin uso"],
+        horizontal=False,
+        disabled=not tiene_uso,
+    )
 
 with col_f4:
     busqueda = st.text_input("Buscar cliente", placeholder="Nombre...")
@@ -152,7 +157,9 @@ if filtro_ck == "Con Checkpoint":
     df = df[df["tiene_checkpoint"] == 1]
 elif filtro_ck == "Sin Checkpoint":
     df = df[df["tiene_checkpoint"] != 1]
-if solo_sin_uso and tiene_uso:
+if tiene_uso and filtro_uso == "Con uso":
+    df = df[df["no_uso"] == False]
+elif tiene_uso and filtro_uso == "Sin uso":
     df = df[df["no_uso"] == True]
 if sel_facturacion:
     df = df[df["tipo_facturacion"].isin(sel_facturacion)]
