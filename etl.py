@@ -267,6 +267,17 @@ def load_aging(file_bytes: bytes) -> pd.DataFrame:
     ).reset_index()
 
 
+def _find_col(df: pd.DataFrame, candidates: list[str]) -> str:
+    """Devuelve el primer nombre de columna de candidates que existe en df."""
+    for c in candidates:
+        if c in df.columns:
+            return c
+    raise KeyError(
+        f"No se encontró ninguna de las columnas {candidates}. "
+        f"Columnas disponibles: {list(df.columns)}"
+    )
+
+
 def load_uso(file_bytes: bytes) -> pd.DataFrame:
     """
     Lee el Excel de detalle de uso (solapas USO SIL y USO LLN).
@@ -275,14 +286,29 @@ def load_uso(file_bytes: bytes) -> pd.DataFrame:
     uso_sil = pd.read_excel(BytesIO(file_bytes), sheet_name="USO SIL")
     uso_lln = pd.read_excel(BytesIO(file_bytes), sheet_name="USO LLN")
 
+    sil_col = _find_col(uso_sil, [
+        "m-user-sap_customer_number",
+        "SAP Customer Number",
+        "sap_customer_number",
+        "SAP ID",
+        "Customer Number",
+    ])
+    lln_col = _find_col(uso_lln, [
+        "SAP ID",
+        "m-user-sap_customer_number",
+        "SAP Customer Number",
+        "sap_customer_number",
+        "Customer Number",
+    ])
+
     sil_counts = (
-        uso_sil["m-user-sap_customer_number"]
+        uso_sil[sil_col]
         .dropna()
         .astype(str).str.strip()
         .value_counts()
     )
     lln_counts = (
-        uso_lln["SAP ID"]
+        uso_lln[lln_col]
         .dropna()
         .astype(str).str.strip()
         .value_counts()
