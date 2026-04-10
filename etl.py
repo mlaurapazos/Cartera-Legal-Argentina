@@ -267,13 +267,46 @@ def load_aging(file_bytes: bytes) -> pd.DataFrame:
     ).reset_index()
 
 
-def _find_col(df: pd.DataFrame, candidates: list[str]) -> str:
-    """Devuelve el primer nombre de columna de candidates que existe en df."""
+_SIL_CANDIDATES = [
+    "m-user-sap_customer_number",
+    "SAP Customer Number",
+    "sap_customer_number",
+    "SAP ID",
+    "Customer Number",
+]
+_LLN_CANDIDATES = [
+    "SAP ID",
+    "m-user-sap_customer_number",
+    "SAP Customer Number",
+    "sap_customer_number",
+    "Customer Number",
+]
+
+
+def _read_uso_sheet(file_bytes: bytes, sheet_name: str, candidates: list) -> tuple:
+    """
+    Lee una hoja de uso detectando automáticamente la fila de header.
+    Devuelve (DataFrame, nombre_columna_sap).
+    """
+    raw = pd.read_excel(BytesIO(file_bytes), sheet_name=sheet_name, header=None)
+    # Buscar la fila que contiene alguno de los candidatos
+    header_row = 0
+    for i, row in raw.iterrows():
+        row_vals = [str(v).strip() for v in row if pd.notna(v)]
+        for c in candidates:
+            if c in row_vals:
+                header_row = i
+                break
+        else:
+            continue
+        break
+    df = pd.read_excel(BytesIO(file_bytes), sheet_name=sheet_name, header=header_row)
+    # Encontrar columna SAP
     for c in candidates:
         if c in df.columns:
-            return c
+            return df, c
     raise KeyError(
-        f"No se encontró ninguna de las columnas {candidates}. "
+        f"No se encontró ninguna de las columnas {candidates} en '{sheet_name}'. "
         f"Columnas disponibles: {list(df.columns)}"
     )
 
@@ -283,8 +316,8 @@ def load_uso(file_bytes: bytes) -> pd.DataFrame:
     Lee el Excel de detalle de uso (solapas USO SIL y USO LLN).
     Devuelve un DataFrame con sold_to_pt, uso_sil, uso_lln (total de eventos por cliente).
     """
-    uso_sil = pd.read_excel(BytesIO(file_bytes), sheet_name="USO SIL")
-    uso_lln = pd.read_excel(BytesIO(file_bytes), sheet_name="USO LLN")
+    uso_sil, sil_col = _read_uso_sheet(file_bytes, "USO SIL", _SIL_CANDIDATES)
+    uso_lln, lln_col = _read_uso_sheet(file_bytes, "USO LLN", _LLN_CANDIDATES)
 
     sil_col = _find_col(uso_sil, [
         "m-user-sap_customer_number",
@@ -301,18 +334,8 @@ def load_uso(file_bytes: bytes) -> pd.DataFrame:
         "Customer Number",
     ])
 
-    sil_counts = (
-        uso_sil[sil_col]
-        .dropna()
-        .astype(str).str.strip()
-        .value_counts()
-    )
-    lln_counts = (
-        uso_lln[lln_col]
-        .dropna()
-        .astype(str).str.strip()
-        .value_counts()
-    )
+    sil_counts = uso_sil[sil_col].dropna().astype(str).str.strip().value_counts()
+    lln_counts = uso_lln[lln_col].dropna().astype(str).str.strip().value_counts()
 
     df_sil = sil_counts.rename("uso_sil").reset_index()
     df_sil.columns = ["sold_to_pt", "uso_sil"]
