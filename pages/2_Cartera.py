@@ -37,59 +37,38 @@ tiene_aging = "deuda_90" in df.columns
 
 # ── Filtros ───────────────────────────────────────────────────────────────────
 st.markdown("#### Filtros")
-col_f1, col_f2, col_f3, col_f4 = st.columns([2, 2, 1, 2])
 
-with col_f1:
+# Grupo 1: Producto
+st.caption("**Producto**")
+col_p1, col_p2, col_p3 = st.columns([2, 2, 2])
+with col_p1:
     prods_sf = sorted(df["producto_principal_sf"].dropna().unique())
     sel_sf = st.multiselect("Producto Principal SF", prods_sf, default=[])
-
-with col_f2:
+with col_p2:
     prods_sus = sorted(df["producto_principal_suscripto"].dropna().unique())
     sel_sus = st.multiselect("Producto Principal Suscripto", prods_sus, default=[])
+with col_p3:
+    busqueda = st.text_input("Buscar cliente", placeholder="Nombre...")
 
-with col_f3:
+st.divider()
+
+# Grupo 2: Características del cliente
+st.caption("**Características**")
+col_c1, col_c2, col_c3 = st.columns(3)
+with col_c1:
     filtro_ck = st.radio(
         "Checkpoint",
         ["Todos", "Con Checkpoint", "Sin Checkpoint"],
-        horizontal=False,
+        horizontal=True,
     )
+with col_c2:
     filtro_uso = st.radio(
-        "Uso",
+        "Uso del producto",
         ["Todos", "Con uso", "Sin uso"],
-        horizontal=False,
+        horizontal=True,
         disabled=not tiene_uso,
     )
-
-with col_f4:
-    busqueda = st.text_input("Buscar cliente", placeholder="Nombre...")
-
-col_f5, col_f6, col_f7 = st.columns([2, 3, 3])
-with col_f5:
-    sel_facturacion = st.multiselect(
-        "Tipo de facturación", ["Anual", "Mensual"], default=[]
-    )
-with col_f6:
-    if tiene_aging:
-        filtro_deuda = st.radio(
-            "Deuda (> 90 días)",
-            ["Todos", "Con deuda", "Sin deuda"],
-            horizontal=True,
-        )
-    else:
-        filtro_deuda = "Todos"
-with col_f7:
-    tiene_dif = "acv_dif_anual" in df.columns
-    if tiene_dif:
-        filtro_dif = st.radio(
-            "Diferencia ACV",
-            ["Todos", "🟢 Pagan más (sube)", "🔴 Pagan menos (baja)"],
-            horizontal=True,
-        )
-    else:
-        filtro_dif = "Todos"
-
-col_f8, = st.columns([1])
-with col_f8:
+with col_c3:
     tiene_papel_col = "tiene_papel" in df.columns
     if tiene_papel_col:
         filtro_papel = st.radio(
@@ -99,6 +78,35 @@ with col_f8:
         )
     else:
         filtro_papel = "Todos"
+
+st.divider()
+
+# Grupo 3: Facturación, venta y ACV
+st.caption("**Facturación y ACV**")
+col_v1, col_v2, col_v3 = st.columns(3)
+with col_v1:
+    sel_facturacion = st.multiselect(
+        "Tipo de facturación", ["Anual", "Mensual"], default=[]
+    )
+with col_v2:
+    if tiene_aging:
+        filtro_deuda = st.radio(
+            "Deuda (> 90 días)",
+            ["Todos", "Con deuda", "Sin deuda"],
+            horizontal=True,
+        )
+    else:
+        filtro_deuda = "Todos"
+with col_v3:
+    tiene_dif = "acv_dif_anual" in df.columns
+    if tiene_dif:
+        filtro_dif = st.radio(
+            "Diferencia ACV",
+            ["Todos", "🟢 Pagan más (sube)", "🔴 Pagan menos (baja)"],
+            horizontal=True,
+        )
+    else:
+        filtro_dif = "Todos"
 
 # Filtro por importe mensual
 col_r1, col_r2 = st.columns([3, 1])
