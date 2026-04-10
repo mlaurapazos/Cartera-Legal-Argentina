@@ -69,14 +69,40 @@ def load_suscripciones(file_bytes: bytes) -> pd.DataFrame:
 
 def seed_clasificaciones(conn, file_bytes: bytes):
     """Siembra clasificaciones (usado solo para detección de Checkpoint)."""
-    cl = pd.read_excel(BytesIO(file_bytes), sheet_name="Clasificaciones")
-    cl = cl.rename(columns={
-        "Material": "material",
-        "Es principal": "es_principal_raw",
-        "Producto Principal": "producto_principal",
-    })
+    xl = pd.ExcelFile(BytesIO(file_bytes))
+    sheet = next((s for s in xl.sheet_names if "clasif" in s.lower()), xl.sheet_names[0])
+    cl = xl.parse(sheet)
+
+    cols = list(cl.columns)
+
+    # Detectar columna de material (código o descripción)
+    mat_col = next(
+        (c for c in cols if str(c).strip().lower() in ["material", "material desc", "descripcion", "description"]),
+        cols[0],
+    )
+    # Detectar columna de producto principal
+    prod_col = next(
+        (c for c in cols if "principal" in str(c).strip().lower() or "producto" in str(c).strip().lower()),
+        None,
+    )
+    # Detectar columna es_principal
+    esp_col = next(
+        (c for c in cols if "principal" in str(c).strip().lower() and c != prod_col),
+        None,
+    )
+
+    if prod_col is None:
+        raise ValueError(
+            f"No se encontró columna 'Producto Principal' en la hoja '{sheet}'. "
+            f"Columnas disponibles: {cols}"
+        )
+
+    cl = cl.rename(columns={mat_col: "material", prod_col: "producto_principal"})
     cl["material"] = cl["material"].astype(str).str.strip()
-    cl["es_principal"] = cl["es_principal_raw"].astype(str).str.strip().str.upper().str.startswith("S").astype(int)
+    if esp_col:
+        cl["es_principal"] = cl[esp_col].astype(str).str.strip().str.upper().str.startswith("S").astype(int)
+    else:
+        cl["es_principal"] = 0
     cl["producto_principal"] = cl["producto_principal"].astype(str).str.strip().replace("nan", None)
     cl = cl[["material", "es_principal", "producto_principal"]].drop_duplicates("material")
     db.save_clasificaciones(cl)
