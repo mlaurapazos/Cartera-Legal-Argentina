@@ -155,6 +155,9 @@ def get_resumen(periodo: str = None) -> pd.DataFrame:
             df = df.merge(aging, on="sold_to_pt", how="left")
             for col in ["deuda_90", "deuda_180", "deuda_360"]:
                 df[col] = df[col].fillna(0)
+    # Eliminar duplicados que puedan surgir del merge con uso/aging
+    if not df.empty and "sold_to_pt" in df.columns:
+        df = df.drop_duplicates("sold_to_pt")
     return df
 
 
