@@ -139,6 +139,7 @@ def seed_equiv_wl(conn, file_bytes: bytes) -> tuple:
     pr_clean = pd.DataFrame({
         "usuarios":    pd.to_numeric(pr.iloc[:, 0], errors="coerce"),
         "material":    pr.iloc[:, 1].apply(_safe_code),
+        "descripcion": pr.iloc[:, 2].astype(str).str.strip(),
         "acv_anual":   pd.to_numeric(pr.iloc[:, 3], errors="coerce"),
         "acv_mensual": pd.to_numeric(pr.iloc[:, 4], errors="coerce"),
     })
@@ -509,6 +510,7 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
 
     # precios_dict: {material: {usuarios: {acv_anual, acv_mensual}}}
     precios_dict: dict = {}
+    precios_desc: dict = {}   # {material: descripcion}
     for _, row in precios.iterrows():
         if pd.notna(row.get("material")):
             mat = str(row["material"])
@@ -517,6 +519,8 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
                 "acv_anual":   float(row["acv_anual"]   or 0),
                 "acv_mensual": float(row["acv_mensual"] or 0),
             }
+            if mat not in precios_desc and pd.notna(row.get("descripcion")):
+                precios_desc[mat] = str(row["descripcion"])
 
     def get_price(mat: str, usuarios: int) -> float:
         u = min(max(usuarios, 1), MAX_U)
@@ -539,11 +543,13 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
     # PORTAL mapea a sí mismo
     equiv_lookup[PORTAL_MAT] = [PORTAL_MAT]
 
-    # desc_lookup: {mat_code: descripcion} — desde estructura
+    # desc_lookup: {mat_code: descripcion} — desde estructura + precios WL
     desc_lookup: dict = {}
     if not est.empty and "material" in est.columns:
         for _, row in est.iterrows():
             desc_lookup[str(row["material"])] = str(row.get("descripcion", ""))
+    # Descripciones de materiales nuevos (de precios_wl, tienen prioridad)
+    desc_lookup.update(precios_desc)
 
     output: list = []
 
