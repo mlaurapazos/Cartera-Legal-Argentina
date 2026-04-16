@@ -459,3 +459,187 @@ def build_resumen(conn, periodo: str) -> int:
 
     db.save_resumen_periodo(resumen, periodo)
     return len(resumen)
+
+
+# ── Constantes para detalle de suscripciones ──────────────────────────────────
+PORTAL_MAT   = "42820797"
+_WL_EXCL_SET = {"43570954", "43570951", "43572801"}
+
+
+def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
+    """
+    Retorna un DataFrame a nivel material (una fila por material actual → material nuevo)
+    con la lógica de equivalencias WL y el split 95%/5% entre exclusivo y PORTAL.
+
+    Columnas de salida:
+        sold_to_pt, account_name, cant_usuarios,
+        mat_code_actual, mat_desc_actual, acv_anual_actual, acv_mensual_actual,
+        mat_code_nuevo,  mat_desc_nuevo,  acv_anual_nuevo,  acv_mensual_nuevo
+    """
+    def _safe(x):
+        if pd.isna(x):
+            return None
+        try:
+            return str(int(float(x)))
+        except Exception:
+            return None
+
+    df = db.get_raw_suscripciones(periodo)
+    if df.empty:
+        return pd.DataFrame()
+
+    df["mat_code"]  = df["material"].apply(_safe)
+    df["sold_to_pt"] = df["sold_to_pt"].astype(str)
+    df["acv_ars"]   = pd.to_numeric(df["acv_ars"], errors="coerce").fillna(0)
+
+    # Filtros HighQ / Tax Professional / Global Print
+    df = df[~df["material_desc"].astype(str).str.upper().str.contains("HIGHQ|HIGH-Q", na=False)]
+    df = df[~df["bu2"].astype(str).str.strip().isin(["Tax Professional", "Global Print"])]
+    df = df[df["mat_code"].notna()]
+
+    # Una fila por cliente-material
+    df = df.drop_duplicates(["sold_to_pt", "mat_code"])
+
+    # Cargar tablas de soporte
+    equiv   = db.get_equiv_wl()
+    precios = db.get_precios_wl()
+    est     = db.get_estructura()
+
+    MAX_U = 30
+
+    # precios_dict: {material: {usuarios: {acv_anual, acv_mensual}}}
+    precios_dict: dict = {}
+    for _, row in precios.iterrows():
+        if pd.notna(row.get("material")):
+            mat = str(row["material"])
+            u   = int(row["usuarios"])
+            precios_dict.setdefault(mat, {})[u] = {
+                "acv_anual":   float(row["acv_anual"]   or 0),
+                "acv_mensual": float(row["acv_mensual"] or 0),
+            }
+
+    def get_price(mat: str, usuarios: int) -> float:
+        u = min(max(usuarios, 1), MAX_U)
+        mp = precios_dict.get(mat, {})
+        if u in mp:
+            return mp[u]["acv_anual"]
+        menores = [k for k in mp if k <= u]
+        if menores:
+            return mp[max(menores)]["acv_anual"]
+        return mp.get(1, {"acv_anual": 0})["acv_anual"]
+
+    # equiv_lookup: {mat_actual: [nuevos]}
+    equiv_lookup: dict = {}
+    for _, row in equiv.iterrows():
+        mat = _safe(row["mat_actual"])
+        if not mat:
+            continue
+        nuevos = [_safe(row.get(c)) for c in ["mat_nuevo_1", "mat_nuevo_2", "mat_nuevo_3"]]
+        equiv_lookup[mat] = [n for n in nuevos if n]
+    # PORTAL mapea a sí mismo
+    equiv_lookup[PORTAL_MAT] = [PORTAL_MAT]
+
+    # desc_lookup: {mat_code: descripcion} — desde estructura
+    desc_lookup: dict = {}
+    if not est.empty and "material" in est.columns:
+        for _, row in est.iterrows():
+            desc_lookup[str(row["material"])] = str(row.get("descripcion", ""))
+
+    output: list = []
+
+    for sold_to_pt, group in df.groupby("sold_to_pt"):
+        account_name = group["account_name"].dropna().iloc[0] if group["account_name"].notna().any() else ""
+
+        todos_u = pd.to_numeric(group["cant_usuarios"], errors="coerce").dropna()
+        todos_u = todos_u[todos_u > 0]
+        cant_u  = int(todos_u.min()) if not todos_u.empty else 1
+
+        mats = group.set_index("mat_code")   # índice único por cliente
+        has_portal = PORTAL_MAT in mats.index
+
+        # ── Clasificar equivalencias ──────────────────────────────────────────
+        regular_pairs: list  = []    # (orig, nuevo)  — non-excl, non-portal
+        excl_cands:    dict  = {}    # {excl_mat: orig_mat}
+
+        for mc in mats.index:
+            if mc == PORTAL_MAT:
+                continue
+            for nuevo in equiv_lookup.get(mc, []):
+                if nuevo == PORTAL_MAT:
+                    continue
+                if nuevo in _WL_EXCL_SET:
+                    excl_cands.setdefault(nuevo, mc)
+                else:
+                    regular_pairs.append((mc, nuevo))
+
+        # Elegir el mejor exclusivo (mayor precio para cant_u del cliente)
+        if excl_cands:
+            best_excl      = max(excl_cands, key=lambda m: get_price(m, cant_u))
+            best_excl_orig = excl_cands[best_excl]
+        else:
+            best_excl      = max(_WL_EXCL_SET, key=lambda m: get_price(m, cant_u))
+            best_excl_orig = None
+
+        excl_full           = get_price(best_excl, cant_u)
+        excl_acv_nuevo      = round(excl_full * 0.95, 2)
+        portal_acv_nuevo    = round(excl_full * 0.05, 2)
+
+        represented: set = set()
+
+        def _row(orig_mc, orig_desc, acv_act, nuevo_mc, nuevo_desc, acv_nuevo):
+            return {
+                "sold_to_pt":         sold_to_pt,
+                "account_name":       account_name,
+                "cant_usuarios":      cant_u,
+                "mat_code_actual":    orig_mc  or "",
+                "mat_desc_actual":    orig_desc or "",
+                "acv_anual_actual":   round(acv_act, 2),
+                "acv_mensual_actual": round(acv_act / 12, 2) if acv_act else 0,
+                "mat_code_nuevo":     nuevo_mc  or "",
+                "mat_desc_nuevo":     nuevo_desc or "",
+                "acv_anual_nuevo":    round(acv_nuevo, 2),
+                "acv_mensual_nuevo":  round(acv_nuevo / 12, 2) if acv_nuevo else 0,
+            }
+
+        # 1. Filas regulares (non-excl, non-portal)
+        for orig_mc, nuevo_mc in regular_pairs:
+            r = mats.loc[orig_mc]
+            output.append(_row(
+                orig_mc, str(r.get("material_desc", "")), float(r["acv_ars"]),
+                nuevo_mc, desc_lookup.get(nuevo_mc, nuevo_mc), get_price(nuevo_mc, cant_u),
+            ))
+            represented.add(orig_mc)
+
+        # 2. Fila del exclusivo (95 %)
+        if best_excl_orig:
+            r = mats.loc[best_excl_orig]
+            output.append(_row(
+                best_excl_orig, str(r.get("material_desc", "")), float(r["acv_ars"]),
+                best_excl, desc_lookup.get(best_excl, best_excl), excl_acv_nuevo,
+            ))
+            represented.add(best_excl_orig)
+        else:
+            output.append(_row("", "", 0, best_excl, desc_lookup.get(best_excl, best_excl), excl_acv_nuevo))
+
+        # 3. Fila del PORTAL (5 %)
+        if has_portal:
+            r = mats.loc[PORTAL_MAT]
+            output.append(_row(
+                PORTAL_MAT, str(r.get("material_desc", "")), float(r["acv_ars"]),
+                PORTAL_MAT, desc_lookup.get(PORTAL_MAT, PORTAL_MAT), portal_acv_nuevo,
+            ))
+            represented.add(PORTAL_MAT)
+        else:
+            output.append(_row("", "", 0, PORTAL_MAT, desc_lookup.get(PORTAL_MAT, PORTAL_MAT), portal_acv_nuevo))
+
+        # 4. Materiales sin equivalencia o con exclusivos perdedores
+        for mc in mats.index:
+            if mc in represented:
+                continue
+            r = mats.loc[mc]
+            output.append(_row(
+                mc, str(r.get("material_desc", "")), float(r["acv_ars"]),
+                "", "", 0,
+            ))
+
+    return pd.DataFrame(output)
