@@ -574,8 +574,11 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
         # regular_origs: {nuevo_mat: set(origs)}   — todos los origs del mismo nuevo
         # excl_cands:    {excl_mat: primer_orig}
         # excl_all_origs: todos los origs que mapearon a cualquier exclusivo
-        regular_map:    dict = {}
-        regular_origs:  dict = {}
+        # regular_pairs: (orig, nuevo, es_duplicado)
+        # es_duplicado=True cuando otro orig ya reclamó ese mismo nuevo material
+        regular_pairs:  list = []
+        regular_seen:   set  = set()   # nuevos ya reclamados
+        regular_origs:  dict = {}      # {nuevo: set(origs)}
         excl_cands:     dict = {}
         excl_all_origs: set  = set()
 
@@ -589,8 +592,9 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
                     excl_cands.setdefault(nuevo, mc)
                     excl_all_origs.add(mc)
                 else:
-                    if nuevo not in regular_map:
-                        regular_map[nuevo] = mc
+                    is_dup = nuevo in regular_seen
+                    regular_seen.add(nuevo)
+                    regular_pairs.append((mc, nuevo, is_dup))
                     regular_origs.setdefault(nuevo, set()).add(mc)
 
         # Elegir el mejor exclusivo (mayor precio para cant_u del cliente)
@@ -607,30 +611,32 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
 
         represented: set = set()
 
-        def _row(orig_mc, orig_desc, acv_act, nuevo_mc, nuevo_desc, acv_nuevo):
+        def _row(orig_mc, orig_desc, acv_act, nuevo_mc, nuevo_desc, acv_nuevo, es_dup=False):
             return {
                 "sold_to_pt":         sold_to_pt,
                 "account_name":       account_name,
                 "cant_usuarios":      cant_u,
-                "mat_code_actual":    orig_mc  or "",
+                "mat_code_actual":    orig_mc   or "",
                 "mat_desc_actual":    orig_desc or "",
                 "acv_anual_actual":   round(acv_act, 2),
                 "acv_mensual_actual": round(acv_act / 12, 2) if acv_act else 0,
                 "mat_code_nuevo":     nuevo_mc  or "",
                 "mat_desc_nuevo":     nuevo_desc or "",
-                "acv_anual_nuevo":    round(acv_nuevo, 2),
-                "acv_mensual_nuevo":  round(acv_nuevo / 12, 2) if acv_nuevo else 0,
+                # Duplicados: muestran el nuevo material pero ACV = 0 (no se suma)
+                "acv_anual_nuevo":    0 if es_dup else round(acv_nuevo, 2),
+                "acv_mensual_nuevo":  0 if es_dup else (round(acv_nuevo / 12, 2) if acv_nuevo else 0),
+                "es_duplicado":       es_dup,
             }
 
-        # 1. Filas regulares (non-excl, non-portal) — un nuevo_mat = una sola fila
-        for nuevo_mc, orig_mc in regular_map.items():
+        # 1. Filas regulares — una por cada (orig, nuevo), duplicados marcados
+        for orig_mc, nuevo_mc, is_dup in regular_pairs:
             r = mats.loc[orig_mc]
             output.append(_row(
                 orig_mc, str(r.get("material_desc", "")), float(r["acv_ars"]),
-                nuevo_mc, desc_lookup.get(nuevo_mc, nuevo_mc), get_price(nuevo_mc, cant_u),
+                nuevo_mc, desc_lookup.get(nuevo_mc, nuevo_mc),
+                get_price(nuevo_mc, cant_u), is_dup,
             ))
-            # Marcar como representados TODOS los origs que generaban este nuevo
-            represented.update(regular_origs.get(nuevo_mc, {orig_mc}))
+            represented.add(orig_mc)
 
         # 2. Fila del exclusivo (95 %)
         if best_excl_orig:
@@ -660,10 +666,7 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
             if mc in represented:
                 continue
             r = mats.loc[mc]
-            output.append(_row(
-                mc, str(r.get("material_desc", "")), float(r["acv_ars"]),
-                "", "", 0,
-            ))
+            output.append(_row(mc, str(r.get("material_desc", "")), float(r["acv_ars"]), "", "", 0))
 
     df_out = pd.DataFrame(output)
     if df_out.empty:

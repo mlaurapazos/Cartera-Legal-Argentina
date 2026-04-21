@@ -64,6 +64,8 @@ display = df.rename(columns={
 try:
     from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 
+    from st_aggrid.shared import JsCode
+
     gb = GridOptionsBuilder.from_dataframe(display)
     gb.configure_default_column(
         sortable=True, filter=True, resizable=True,
@@ -78,10 +80,23 @@ try:
     gb.configure_column("Usuarios", type=["numericColumn"])
     gb.configure_column("SAP ID", pinned="left", width=120)
     gb.configure_column("Razón Social", pinned="left", width=220)
+    # Ocultar columna técnica
+    gb.configure_column("es_duplicado", hide=True)
+
+    # Colorear filas duplicadas en naranja claro
+    row_style = JsCode("""
+        function(params) {
+            if (params.data && params.data.es_duplicado) {
+                return { background: '#FFF3CD', color: '#856404' };
+            }
+        }
+    """)
+    go = gb.build()
+    go["getRowStyle"] = row_style
 
     AgGrid(
         display,
-        gridOptions=gb.build(),
+        gridOptions=go,
         update_mode=GridUpdateMode.NO_UPDATE,
         height=600,
         use_container_width=True,
