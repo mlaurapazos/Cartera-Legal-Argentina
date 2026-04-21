@@ -570,8 +570,14 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
         has_portal = PORTAL_MAT in mats.index
 
         # ── Clasificar equivalencias ──────────────────────────────────────────
-        regular_pairs: list  = []    # (orig, nuevo)  — non-excl, non-portal
-        excl_cands:    dict  = {}    # {excl_mat: orig_mat}
+        # regular_map:   {nuevo_mat: primer_orig}  — un solo orig por nuevo
+        # regular_origs: {nuevo_mat: set(origs)}   — todos los origs del mismo nuevo
+        # excl_cands:    {excl_mat: primer_orig}
+        # excl_all_origs: todos los origs que mapearon a cualquier exclusivo
+        regular_map:    dict = {}
+        regular_origs:  dict = {}
+        excl_cands:     dict = {}
+        excl_all_origs: set  = set()
 
         for mc in mats.index:
             if mc == PORTAL_MAT:
@@ -581,8 +587,11 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
                     continue
                 if nuevo in _WL_EXCL_SET:
                     excl_cands.setdefault(nuevo, mc)
+                    excl_all_origs.add(mc)
                 else:
-                    regular_pairs.append((mc, nuevo))
+                    if nuevo not in regular_map:
+                        regular_map[nuevo] = mc
+                    regular_origs.setdefault(nuevo, set()).add(mc)
 
         # Elegir el mejor exclusivo (mayor precio para cant_u del cliente)
         if excl_cands:
@@ -592,9 +601,9 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
             best_excl      = max(_WL_EXCL_SET, key=lambda m: get_price(m, cant_u))
             best_excl_orig = None
 
-        excl_full           = get_price(best_excl, cant_u)
-        excl_acv_nuevo      = round(excl_full * 0.95, 2)
-        portal_acv_nuevo    = round(excl_full * 0.05, 2)
+        excl_full        = get_price(best_excl, cant_u)
+        excl_acv_nuevo   = round(excl_full * 0.95, 2)
+        portal_acv_nuevo = round(excl_full * 0.05, 2)
 
         represented: set = set()
 
@@ -613,14 +622,15 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
                 "acv_mensual_nuevo":  round(acv_nuevo / 12, 2) if acv_nuevo else 0,
             }
 
-        # 1. Filas regulares (non-excl, non-portal)
-        for orig_mc, nuevo_mc in regular_pairs:
+        # 1. Filas regulares (non-excl, non-portal) — un nuevo_mat = una sola fila
+        for nuevo_mc, orig_mc in regular_map.items():
             r = mats.loc[orig_mc]
             output.append(_row(
                 orig_mc, str(r.get("material_desc", "")), float(r["acv_ars"]),
                 nuevo_mc, desc_lookup.get(nuevo_mc, nuevo_mc), get_price(nuevo_mc, cant_u),
             ))
-            represented.add(orig_mc)
+            # Marcar como representados TODOS los origs que generaban este nuevo
+            represented.update(regular_origs.get(nuevo_mc, {orig_mc}))
 
         # 2. Fila del exclusivo (95 %)
         if best_excl_orig:
@@ -629,9 +639,10 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
                 best_excl_orig, str(r.get("material_desc", "")), float(r["acv_ars"]),
                 best_excl, desc_lookup.get(best_excl, best_excl), excl_acv_nuevo,
             ))
-            represented.add(best_excl_orig)
         else:
             output.append(_row("", "", 0, best_excl, desc_lookup.get(best_excl, best_excl), excl_acv_nuevo))
+        # Marcar como representados TODOS los origs que mapeaban a cualquier exclusivo
+        represented.update(excl_all_origs)
 
         # 3. Fila del PORTAL (5 %)
         if has_portal:
