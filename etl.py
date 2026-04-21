@@ -551,6 +551,12 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
     # Descripciones de materiales nuevos (de precios_wl, tienen prioridad)
     desc_lookup.update(precios_desc)
 
+    # ACV mensual actual por cliente (mismo criterio que resumen_mensual)
+    # df ya está filtrado y deduplicado por (sold_to_pt, mat_code)
+    actual_mensual_map: dict = (
+        df.groupby("sold_to_pt")["acv_ars"].sum() / 12
+    ).to_dict()
+
     output: list = []
 
     for sold_to_pt, group in df.groupby("sold_to_pt"):
@@ -648,4 +654,21 @@ def build_detalle_suscripciones(periodo: str) -> pd.DataFrame:
                 "", "", 0,
             ))
 
-    return pd.DataFrame(output)
+    df_out = pd.DataFrame(output)
+    if df_out.empty:
+        return df_out
+
+    # ── Suscripción Mensual Nueva ──────────────────────────────────────────────
+    # Distribuye el ACV mensual actual del cliente entre los materiales nuevos
+    # en proporción al peso de cada uno sobre el total nuevo del cliente.
+    df_out["_acv_act_mens"] = df_out["sold_to_pt"].map(actual_mensual_map).fillna(0)
+    df_out["_total_nuevo"]  = df_out.groupby("sold_to_pt")["acv_mensual_nuevo"].transform("sum")
+    df_out["suscripcion_mensual_nueva"] = df_out.apply(
+        lambda r: round(
+            r["_acv_act_mens"] * r["acv_mensual_nuevo"] / r["_total_nuevo"], 2
+        ) if r["_total_nuevo"] > 0 else 0,
+        axis=1,
+    )
+    df_out = df_out.drop(columns=["_acv_act_mens", "_total_nuevo"])
+
+    return df_out

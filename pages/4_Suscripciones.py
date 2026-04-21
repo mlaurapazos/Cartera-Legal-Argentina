@@ -46,17 +46,18 @@ st.caption(f"{len(df):,} filas · {df['sold_to_pt'].nunique():,} clientes")
 
 # ── Renombrar columnas para visualización ─────────────────────────────────────
 display = df.rename(columns={
-    "sold_to_pt":         "SAP ID",
-    "account_name":       "Razón Social",
-    "cant_usuarios":      "Usuarios",
-    "mat_code_actual":    "Cód. Material",
-    "mat_desc_actual":    "Descripción Material",
-    "acv_anual_actual":   "ACV Anual",
-    "acv_mensual_actual": "ACV Mensual",
-    "mat_code_nuevo":     "Cód. Material Nuevo",
-    "mat_desc_nuevo":     "Descripción Material Nuevo",
-    "acv_anual_nuevo":    "ACV Anual Nuevo",
-    "acv_mensual_nuevo":  "ACV Mensual Nuevo",
+    "sold_to_pt":               "SAP ID",
+    "account_name":             "Razón Social",
+    "cant_usuarios":            "Usuarios",
+    "mat_code_actual":          "Cód. Material",
+    "mat_desc_actual":          "Descripción Material",
+    "acv_anual_actual":         "ACV Anual",
+    "acv_mensual_actual":       "ACV Mensual",
+    "mat_code_nuevo":           "Cód. Material Nuevo",
+    "mat_desc_nuevo":           "Descripción Material Nuevo",
+    "acv_anual_nuevo":          "ACV Anual Nuevo",
+    "acv_mensual_nuevo":        "ACV Mensual Nuevo",
+    "suscripcion_mensual_nueva": "Suscripción Mensual Nueva",
 })
 
 # ── Grilla ────────────────────────────────────────────────────────────────────
@@ -68,7 +69,7 @@ try:
         sortable=True, filter=True, resizable=True,
         wrapText=False, autoHeight=False,
     )
-    for col in ["ACV Anual", "ACV Mensual", "ACV Anual Nuevo", "ACV Mensual Nuevo"]:
+    for col in ["ACV Anual", "ACV Mensual", "ACV Anual Nuevo", "ACV Mensual Nuevo", "Suscripción Mensual Nueva"]:
         gb.configure_column(
             col,
             type=["numericColumn", "numberColumnFilter"],
@@ -89,10 +90,11 @@ try:
 except ImportError:
     st.dataframe(
         display.style.format({
-            "ACV Anual":       "$ {:,.2f}",
-            "ACV Mensual":     "$ {:,.2f}",
-            "ACV Anual Nuevo": "$ {:,.2f}",
-            "ACV Mensual Nuevo": "$ {:,.2f}",
+            "ACV Anual":                "$ {:,.2f}",
+            "ACV Mensual":              "$ {:,.2f}",
+            "ACV Anual Nuevo":          "$ {:,.2f}",
+            "ACV Mensual Nuevo":        "$ {:,.2f}",
+            "Suscripción Mensual Nueva": "$ {:,.2f}",
         }),
         use_container_width=True,
         height=600,
