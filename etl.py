@@ -50,6 +50,10 @@ def load_suscripciones(file_bytes: bytes) -> pd.DataFrame:
     }
     df = df.rename(columns={c: col_map.get(c, c) for c in df.columns})
 
+    # Descartar columnas no mapeadas (no existen en raw_suscripciones)
+    cols_conocidas = list(col_map.values())
+    df = df[[c for c in cols_conocidas if c in df.columns]]
+
     # Filtrar footer de Salesforce (filas sin SAP numérico válido)
     def es_sap_valido(x):
         if pd.isna(x):
