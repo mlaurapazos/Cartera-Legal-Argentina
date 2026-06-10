@@ -251,12 +251,11 @@ def get_uso(periodo: str) -> pd.DataFrame:
 
 
 def save_aging_periodo(df: pd.DataFrame, periodo: str):
-    """Guarda datos de deuda para un período. Tabla: aging_mensual (col id = sold_to_pt)."""
+    """Guarda datos de deuda para un período. Tabla: aging_mensual."""
     client = get_client()
     client.table("aging_mensual").delete().eq("periodo", periodo).execute()
     df = df.copy()
     df["periodo"] = periodo
-    df = df.rename(columns={"sold_to_pt": "id"})
     records = _to_records(df)
     for i in range(0, len(records), 500):
         client.table("aging_mensual").insert(records[i:i + 500]).execute()
@@ -266,13 +265,12 @@ def get_aging(periodo: str) -> pd.DataFrame:
     try:
         client = get_client()
         result = (client.table("aging_mensual")
-                  .select("id,deuda_total")
+                  .select("sold_to_pt,deuda_total")
                   .eq("periodo", periodo)
                   .execute())
-        if not result.data:
-            return pd.DataFrame(columns=["sold_to_pt", "deuda_total"])
-        df = pd.DataFrame(result.data)
-        return df.rename(columns={"id": "sold_to_pt"})
+        return pd.DataFrame(result.data) if result.data else pd.DataFrame(
+            columns=["sold_to_pt", "deuda_total"]
+        )
     except Exception:
         return pd.DataFrame(columns=["sold_to_pt", "deuda_total"])
 
