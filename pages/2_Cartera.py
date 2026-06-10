@@ -54,7 +54,7 @@ if tiene_uso:
         df["no_uso"] = sin_uso_actual
 
 # Columnas de deuda
-tiene_aging = "deuda_90" in df.columns
+tiene_aging = "deuda_total" in df.columns
 
 # ── Filtros ───────────────────────────────────────────────────────────────────
 st.markdown("#### Filtros")
@@ -112,7 +112,7 @@ with col_v1:
 with col_v2:
     if tiene_aging:
         filtro_deuda = st.radio(
-            "Deuda (> 90 días)",
+            "Deuda",
             ["Todos", "Con deuda", "Sin deuda"],
             horizontal=True,
         )
@@ -150,6 +150,30 @@ with col_r1:
 with col_r2:
     st.markdown("<br>", unsafe_allow_html=True)
     st.caption(f"$ {rango_mens[0]:,.0f} — $ {rango_mens[1]:,.0f}")
+
+# Filtro por monto de deuda
+if tiene_aging:
+    col_deu1, col_deu2 = st.columns([3, 1])
+    with col_deu1:
+        deu_vals = df["deuda_total"].fillna(0)
+        min_deu = float(deu_vals.min())
+        max_deu = float(deu_vals.max())
+        if max_deu > min_deu:
+            rango_deuda = st.slider(
+                "Monto de deuda (ARS)",
+                min_value=min_deu,
+                max_value=max_deu,
+                value=(min_deu, max_deu),
+                format="$ %,.0f",
+                step=max(1.0, round((max_deu - min_deu) / 1000, 0)),
+            )
+        else:
+            rango_deuda = (min_deu, max_deu)
+    with col_deu2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.caption(f"$ {rango_deuda[0]:,.0f} — $ {rango_deuda[1]:,.0f}")
+else:
+    rango_deuda = None
 
 # Filtro por diferencia ACV anual
 tiene_dif_col = "acv_dif_anual" in df.columns and df["acv_dif_anual"].notna().any()
@@ -193,9 +217,9 @@ elif tiene_uso and filtro_uso == "Sin uso":
 if sel_facturacion:
     df = df[df["tipo_facturacion"].isin(sel_facturacion)]
 if tiene_aging and filtro_deuda == "Con deuda":
-    df = df[df["deuda_90"] > 0]
+    df = df[df["deuda_total"] > 0]
 elif tiene_aging and filtro_deuda == "Sin deuda":
-    df = df[df["deuda_90"] <= 0]
+    df = df[df["deuda_total"] <= 0]
 if tiene_dif and filtro_dif == "🟢 Pagan más (sube)":
     df = df[df["acv_dif_anual"] > 0]
 elif tiene_dif and filtro_dif == "🔴 Pagan menos (baja)":
@@ -209,6 +233,8 @@ if busqueda:
 df = df[(df["valor_mensual_ars"] >= rango_mens[0]) & (df["valor_mensual_ars"] <= rango_mens[1])]
 if rango_dif is not None and tiene_dif_col:
     df = df[(df["acv_dif_anual"] >= rango_dif[0]) & (df["acv_dif_anual"] <= rango_dif[1])]
+if rango_deuda is not None and tiene_aging:
+    df = df[(df["deuda_total"] >= rango_deuda[0]) & (df["deuda_total"] <= rango_deuda[1])]
 
 # ── Tabla de clientes ─────────────────────────────────────────────────────────
 st.subheader(f"Detalle de clientes — {len(df):,} registros")
@@ -260,9 +286,7 @@ display = df.rename(columns={
     "uso_sil":                       "Uso SIL",
     "uso_lln":                       "Uso LLN",
     "no_uso":                        "No utiliza el producto",
-    "deuda_90":                      "Deuda > 90",
-    "deuda_180":                     "Deuda > 180",
-    "deuda_360":                     "Deuda > 360",
+    "deuda_total":                   "Deuda Total",
 }).copy()
 
 COLS_ORDER = [
@@ -271,7 +295,7 @@ COLS_ORDER = [
     "ACV Anual Nuevo", "ACV Mensual Nuevo", "ACV Dif. Anual", "ACV Dif. Mensual",
     "Facturación", "Usuarios", "Papel", "Temáticas", "Bibliotecas", "Revistas", "Checkpoint",
     "Uso SIL", "Uso LLN", "No utiliza el producto",
-    "Deuda > 90", "Deuda > 180", "Deuda > 360",
+    "Deuda Total",
 ]
 display = display[[c for c in COLS_ORDER if c in display.columns]]
 
@@ -294,9 +318,8 @@ if "Uso SIL" in display.columns:
     fmt["Uso SIL"] = "{:,}"
 if "Uso LLN" in display.columns:
     fmt["Uso LLN"] = "{:,}"
-for col_deuda in ["Deuda > 90", "Deuda > 180", "Deuda > 360"]:
-    if col_deuda in display.columns:
-        fmt[col_deuda] = "$ {:,.0f}"
+if "Deuda Total" in display.columns:
+    fmt["Deuda Total"] = "$ {:,.0f}"
 
 dif_cols = [c for c in ["ACV Dif. Anual", "ACV Dif. Mensual"] if c in display.columns]
 

@@ -153,8 +153,7 @@ def get_resumen(periodo: str = None) -> pd.DataFrame:
         aging = get_aging(periodo)
         if not aging.empty:
             df = df.merge(aging, on="sold_to_pt", how="left")
-            for col in ["deuda_90", "deuda_180", "deuda_360"]:
-                df[col] = df[col].fillna(0)
+            df["deuda_total"] = df["deuda_total"].fillna(0)
     # Eliminar duplicados que puedan surgir del merge con uso/aging
     if not df.empty and "sold_to_pt" in df.columns:
         df = df.drop_duplicates("sold_to_pt")
@@ -252,7 +251,7 @@ def get_uso(periodo: str) -> pd.DataFrame:
 
 
 def save_aging_periodo(df: pd.DataFrame, periodo: str):
-    """Guarda datos de aging (deuda) para un período. Tabla: aging_mensual."""
+    """Guarda datos de deuda para un período. Tabla: aging_mensual."""
     client = get_client()
     client.table("aging_mensual").delete().eq("periodo", periodo).execute()
     df = df.copy()
@@ -266,14 +265,14 @@ def get_aging(periodo: str) -> pd.DataFrame:
     try:
         client = get_client()
         result = (client.table("aging_mensual")
-                  .select("sold_to_pt,deuda_90,deuda_180,deuda_360")
+                  .select("sold_to_pt,deuda_total")
                   .eq("periodo", periodo)
                   .execute())
         return pd.DataFrame(result.data) if result.data else pd.DataFrame(
-            columns=["sold_to_pt", "deuda_90", "deuda_180", "deuda_360"]
+            columns=["sold_to_pt", "deuda_total"]
         )
     except Exception:
-        return pd.DataFrame(columns=["sold_to_pt", "deuda_90", "deuda_180", "deuda_360"])
+        return pd.DataFrame(columns=["sold_to_pt", "deuda_total"])
 
 
 def get_upload_log() -> pd.DataFrame:

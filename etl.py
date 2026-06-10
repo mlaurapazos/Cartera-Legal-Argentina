@@ -240,29 +240,27 @@ def _calc_acv_nuevo(
 
 def load_aging(file_bytes: bytes) -> pd.DataFrame:
     """
-    Lee el Excel de Aging (deuda por cliente).
-    Devuelve DataFrame con sold_to_pt, deuda_90, deuda_180, deuda_360.
-    - Deuda > 90  ← columna "Deuda > 90" del archivo
-    - Deuda > 180 ← columna "Deuda > 180" del archivo
-    - Deuda > 360 ← columna "Over 360 Days" del archivo
+    Lee el Excel de Deuda (SAP ID + monto total adeudado).
+    Formato esperado: columna SAP en posición 0, monto en posición 1.
+    Devuelve DataFrame con sold_to_pt, deuda_total.
     """
     df = pd.read_excel(BytesIO(file_bytes))
+    df.columns = ["sap_raw", "deuda_total"] + list(df.columns[2:])
 
-    df = df[df["Customer Number"].notna()].copy()
-    df["sold_to_pt"] = df["Customer Number"].apply(lambda x: str(int(float(x))))
+    df = df[df["sap_raw"].notna()].copy()
+    # Filtrar filas que no sean SAP numérico válido (totales, headers, etc.)
+    def _es_sap(x):
+        try:
+            int(float(x))
+            return True
+        except Exception:
+            return False
 
-    def _col(df, name):
-        return pd.to_numeric(df[name], errors="coerce").fillna(0) if name in df.columns else 0
+    df = df[df["sap_raw"].apply(_es_sap)].copy()
+    df["sold_to_pt"] = df["sap_raw"].apply(lambda x: str(int(float(x))))
+    df["deuda_total"] = pd.to_numeric(df["deuda_total"], errors="coerce").fillna(0)
 
-    df["deuda_90"]  = _col(df, "Deuda > 90")
-    df["deuda_180"] = _col(df, "Deuda > 180")
-    df["deuda_360"] = _col(df, "Over 360 Days")
-
-    return df.groupby("sold_to_pt").agg(
-        deuda_90=("deuda_90", "sum"),
-        deuda_180=("deuda_180", "sum"),
-        deuda_360=("deuda_360", "sum"),
-    ).reset_index()
+    return df.groupby("sold_to_pt").agg(deuda_total=("deuda_total", "sum")).reset_index()
 
 
 _SIL_CANDIDATES = [
